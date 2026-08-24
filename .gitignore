@@ -11,6 +11,9 @@ data/cache/
 # Entorno local
 .env
 
+# Spec de trabajo — decisión del usuario: no se sube a este repo público por ahora
+specs/
+
 # Editor / OS
 .DS_Store
 .vscode/
