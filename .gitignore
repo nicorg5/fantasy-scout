@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# Datos crudos y caché — nunca se versionan (repo público, datos de la API oficial y de terceros)
+data/raw/
+data/cache/
+
+# Entorno local
+.env
+
+# Editor / OS
+.DS_Store
+.vscode/
