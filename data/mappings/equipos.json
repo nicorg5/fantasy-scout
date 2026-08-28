@@ -1,0 +1,102 @@
+{
+ "11": {
+  "id": "10",
+  "nombre": "Levante",
+  "slug": "levante"
+ },
+ "12": {
+  "id": "11",
+  "nombre": "M\u00e1laga",
+  "slug": "malaga"
+ },
+ "13": {
+  "id": "13",
+  "nombre": "Osasuna",
+  "slug": "osasuna"
+ },
+ "14": {
+  "id": "14",
+  "nombre": "Rayo",
+  "slug": "rayo-vallecano"
+ },
+ "15": {
+  "id": "15",
+  "nombre": "Real Madrid",
+  "slug": "real-madrid"
+ },
+ "16": {
+  "id": "16",
+  "nombre": "Real Sociedad",
+  "slug": "real-sociedad"
+ },
+ "17": {
+  "id": "17",
+  "nombre": "Sevilla",
+  "slug": "sevilla"
+ },
+ "18": {
+  "id": "18",
+  "nombre": "Valencia",
+  "slug": "valencia"
+ },
+ "2": {
+  "id": "2",
+  "nombre": "Atl\u00e9tico",
+  "slug": "atletico"
+ },
+ "20": {
+  "id": "22",
+  "nombre": "Villarreal",
+  "slug": "villarreal"
+ },
+ "21": {
+  "id": "28",
+  "nombre": "Alav\u00e9s",
+  "slug": "alaves"
+ },
+ "26": {
+  "id": "6",
+  "nombre": "Deportivo",
+  "slug": "deportivo"
+ },
+ "3": {
+  "id": "1",
+  "nombre": "Athletic",
+  "slug": "athletic"
+ },
+ "4": {
+  "id": "3",
+  "nombre": "Barcelona",
+  "slug": "barcelona"
+ },
+ "49": {
+  "id": "42",
+  "nombre": "Racing",
+  "slug": "racing"
+ },
+ "5": {
+  "id": "4",
+  "nombre": "Betis",
+  "slug": "betis"
+ },
+ "6": {
+  "id": "5",
+  "nombre": "Celta",
+  "slug": "celta"
+ },
+ "7": {
+  "id": "21",
+  "nombre": "Elche",
+  "slug": "elche"
+ },
+ "8": {
+  "id": "7",
+  "nombre": "Espanyol",
+  "slug": "espanyol"
+ },
+ "9": {
+  "id": "8",
+  "nombre": "Getafe",
+  "slug": "getafe"
+ }
+}

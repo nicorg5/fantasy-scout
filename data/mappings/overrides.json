@@ -1,0 +1,7 @@
+{
+  "_comentario": "Overrides manuales del matching de jugadores. Tienen precedencia sobre la heuristica. Formato: id_oficial -> {id_externo, nota}. Ver design.md 'Cruce de IDs'. Las entradas que empiezan por _ se ignoran.",
+  "_ejemplo": {
+    "id_externo": "12345",
+    "nota": "Solo un ejemplo del formato; se ignora porque la clave empieza por _"
+  }
+}
