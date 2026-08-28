@@ -226,3 +226,41 @@ class CredencialesLaLiga(Base):
     )
 
     usuario: Mapped[Usuario] = relationship()
+
+
+class AnaliticaDiaria(Base):
+    """Analítica scrapeada de TODOS los jugadores, un registro por jugador y día.
+
+    Existe para que **la web no tenga que scrapear nunca**: el scraping es serial y
+    espaciado por respeto al sitio (~1 minuto para el mercado), lo que hacía inviable
+    hacerlo dentro de una petición HTTP. El cron la rellena de noche y la web solo lee.
+
+    Se identifica por el id de **futbolfantasy**, no por el jugador oficial, a propósito:
+      - Es el dato tal y como llega de la fuente, sin mezclar identidades.
+      - El emparejamiento con la API oficial se hace al servir (es cálculo, no red), así
+        que si el matching mejora, estos datos ya guardados se benefician sin migrarlos.
+    """
+
+    __tablename__ = "analitica_diaria"
+    __table_args__ = (
+        UniqueConstraint("fecha", "id_externo", name="uq_analitica_diaria_fecha_jugador"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    fecha: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+
+    # Identidad en el sitio scrapeado. `id_externo` es cadena porque los entrenadores
+    # usan formato 'e119', no numérico.
+    id_externo: Mapped[str] = mapped_column(String(32), nullable=False)
+    nombre_externo: Mapped[str] = mapped_column(String(255), nullable=False)
+    equipo_externo: Mapped[str] = mapped_column(String(16), nullable=False)
+
+    tendencia_direccion: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    tendencia_variacion_euros: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    media_diaria_euros: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    media_acumulada_euros: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Puede faltar: futbolfantasy solo publica probabilidad del once probable.
+    probabilidad_jugar: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    origen: Mapped[str] = mapped_column(String(64), nullable=False)
+    capturado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
