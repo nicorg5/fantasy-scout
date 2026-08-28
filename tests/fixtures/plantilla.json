@@ -1,0 +1,452 @@
+{
+ "players": [
+  {
+   "buyoutClause": 15830651,
+   "managerId": 111111,
+   "playerTeamId": "19793874",
+   "buyoutClauseLockedEndTime": "2026-08-21T18:01:01+02:00",
+   "isShielded": false,
+   "playerMaster": {
+    "id": "3040",
+    "name": "Alfonso Herrero",
+    "nickname": "A. Herrero",
+    "slug": "a-herrero",
+    "positionId": 1,
+    "playerStatus": "ok",
+    "lastSeasonPoints": null,
+    "images": {
+     "transparent": {
+      "256x256": "https://assets-fantasy.llt-services.com/players/t182/p3040/256x256/p3040_t182_1_001_000.png"
+     }
+    },
+    "team": {
+     "id": "12",
+     "name": "Málaga CF",
+     "slug": "malaga-cf",
+     "assets": "{\"color\": \"https://assets-fantasy.llt-services.com/teambadge/t182/color/t182_malaga-cf.png\",\"gray\": \"https://assets-fantasy.llt-services.com/teambadge/t182/gray/t182_malaga-cf.png\",\"white\": \"https://assets-fantasy.llt-services.com/teambadge/t182/white/t182_malaga-cf.png\"}",
+     "badgeColor": "https://assets-fantasy.llt-services.com/teambadge/t182/color/t182_malaga-cf.png",
+     "badgeWhite": "https://assets-fantasy.llt-services.com/teambadge/t182/white/t182_malaga-cf.png"
+    },
+    "lastStats": [
+     {
+      "stats": {
+       "mins_played": [
+        90,
+        2
+       ],
+       "goals": [
+        0,
+        0
+       ],
+       "goal_assist": [
+        0,
+        0
+       ],
+       "offtarget_att_assist": [
+        0,
+        0
+       ],
+       "pen_area_entries": [
+        0,
+        0
+       ],
+       "penalty_won": [
+        0,
+        0
+       ],
+       "penalty_save": [
+        0,
+        0
+       ],
+       "saves": [
+        4,
+        2
+       ],
+       "effective_clearance": [
+        0,
+        0
+       ],
+       "penalty_failed": [
+        0,
+        0
+       ],
+       "own_goals": [
+        0,
+        0
+       ],
+       "goals_conceded": [
+        2,
+        -2
+       ],
+       "yellow_card": [
+        0,
+        0
+       ],
+       "second_yellow_card": [
+        0,
+        0
+       ],
+       "red_card": [
+        0,
+        0
+       ],
+       "total_scoring_att": [
+        0,
+        0
+       ],
+       "won_contest": [
+        0,
+        0
+       ],
+       "ball_recovery": [
+        9,
+        1
+       ],
+       "poss_lost_all": [
+        15,
+        -1
+       ],
+       "penalty_conceded": [
+        0,
+        0
+       ],
+       "marca_points": [
+        -1,
+        2
+       ]
+      },
+      "weekNumber": 1,
+      "totalPoints": 4,
+      "isInIdealFormation": false
+     },
+     {
+      "stats": {
+       "mins_played": [
+        90,
+        2
+       ],
+       "goals": [
+        0,
+        0
+       ],
+       "goal_assist": [
+        0,
+        0
+       ],
+       "offtarget_att_assist": [
+        0,
+        0
+       ],
+       "pen_area_entries": [
+        0,
+        0
+       ],
+       "penalty_won": [
+        0,
+        0
+       ],
+       "penalty_save": [
+        0,
+        0
+       ],
+       "saves": [
+        4,
+        2
+       ],
+       "effective_clearance": [
+        1,
+        0
+       ],
+       "penalty_failed": [
+        0,
+        0
+       ],
+       "own_goals": [
+        0,
+        0
+       ],
+       "goals_conceded": [
+        1,
+        0
+       ],
+       "yellow_card": [
+        0,
+        0
+       ],
+       "second_yellow_card": [
+        0,
+        0
+       ],
+       "red_card": [
+        0,
+        0
+       ],
+       "total_scoring_att": [
+        0,
+        0
+       ],
+       "won_contest": [
+        0,
+        0
+       ],
+       "ball_recovery": [
+        7,
+        1
+       ],
+       "poss_lost_all": [
+        3,
+        0
+       ],
+       "penalty_conceded": [
+        0,
+        0
+       ],
+       "marca_points": [
+        -1,
+        3
+       ]
+      },
+      "weekNumber": 2,
+      "totalPoints": 8,
+      "isInIdealFormation": false
+     }
+    ],
+    "averagePoints": 6,
+    "points": 12,
+    "marketValue": 9381793
+   }
+  },
+  {
+   "playerMarket": {
+    "id": "19414063",
+    "salePrice": 5807015,
+    "expirationDate": "2026-08-28T16:40:19+02:00",
+    "numberOfOffers": 1
+   },
+   "buyoutClause": 8584840,
+   "managerId": 111111,
+   "playerTeamId": "41949161",
+   "buyoutClauseLockedEndTime": "2026-09-05T17:17:41+02:00",
+   "isShielded": false,
+   "playerMaster": {
+    "id": "2785",
+    "name": "Clemens Riedel",
+    "nickname": "Riedel",
+    "slug": "clemens-riedel",
+    "positionId": 2,
+    "playerStatus": "ok",
+    "lastSeasonPoints": 76,
+    "images": {
+     "transparent": {
+      "256x256": "https://assets-fantasy.llt-services.com/players/t177/p2785/256x256/p2785_t177_1_001_000.png"
+     }
+    },
+    "team": {
+     "id": "8",
+     "name": "RCD Espanyol",
+     "slug": "rcd-espanyol",
+     "assets": "{\"color\":\"https://assets-fantasy.llt-services.com/teambadge/t177/color/t177_rcd-espanyol.png\",\"white\":\"https://assets-fantasy.llt-services.com/teambadge/t177/white/t177_rcd-espanyol.png\"}",
+     "badgeColor": "https://assets-fantasy.llt-services.com/teambadge/t177/color/t177_rcd-espanyol.png",
+     "badgeWhite": "https://assets-fantasy.llt-services.com/teambadge/t177/white/t177_rcd-espanyol.png"
+    },
+    "lastStats": [
+     {
+      "stats": {
+       "mins_played": [
+        90,
+        2
+       ],
+       "goals": [
+        0,
+        0
+       ],
+       "goal_assist": [
+        0,
+        0
+       ],
+       "offtarget_att_assist": [
+        0,
+        0
+       ],
+       "pen_area_entries": [
+        0,
+        0
+       ],
+       "penalty_won": [
+        0,
+        0
+       ],
+       "penalty_save": [
+        0,
+        0
+       ],
+       "saves": [
+        0,
+        0
+       ],
+       "effective_clearance": [
+        6,
+        2
+       ],
+       "penalty_failed": [
+        0,
+        0
+       ],
+       "own_goals": [
+        0,
+        0
+       ],
+       "goals_conceded": [
+        0,
+        3
+       ],
+       "yellow_card": [
+        0,
+        0
+       ],
+       "second_yellow_card": [
+        0,
+        0
+       ],
+       "red_card": [
+        0,
+        0
+       ],
+       "total_scoring_att": [
+        0,
+        0
+       ],
+       "won_contest": [
+        0,
+        0
+       ],
+       "ball_recovery": [
+        1,
+        0
+       ],
+       "poss_lost_all": [
+        15,
+        -1
+       ],
+       "penalty_conceded": [
+        0,
+        0
+       ],
+       "marca_points": [
+        -1,
+        2
+       ]
+      },
+      "weekNumber": 1,
+      "totalPoints": 8,
+      "isInIdealFormation": false
+     },
+     {
+      "stats": {
+       "mins_played": [
+        66,
+        2
+       ],
+       "goals": [
+        0,
+        0
+       ],
+       "goal_assist": [
+        0,
+        0
+       ],
+       "offtarget_att_assist": [
+        0,
+        0
+       ],
+       "pen_area_entries": [
+        0,
+        0
+       ],
+       "penalty_won": [
+        0,
+        0
+       ],
+       "penalty_save": [
+        0,
+        0
+       ],
+       "saves": [
+        0,
+        0
+       ],
+       "effective_clearance": [
+        4,
+        1
+       ],
+       "penalty_failed": [
+        0,
+        0
+       ],
+       "own_goals": [
+        0,
+        0
+       ],
+       "goals_conceded": [
+        1,
+        0
+       ],
+       "yellow_card": [
+        1,
+        -1
+       ],
+       "second_yellow_card": [
+        0,
+        0
+       ],
+       "red_card": [
+        0,
+        0
+       ],
+       "total_scoring_att": [
+        1,
+        0
+       ],
+       "won_contest": [
+        0,
+        0
+       ],
+       "ball_recovery": [
+        0,
+        0
+       ],
+       "poss_lost_all": [
+        5,
+        0
+       ],
+       "penalty_conceded": [
+        0,
+        0
+       ],
+       "marca_points": [
+        -1,
+        0
+       ]
+      },
+      "weekNumber": 2,
+      "totalPoints": 2,
+      "isInIdealFormation": false
+     }
+    ],
+    "averagePoints": 5,
+    "points": 10,
+    "marketValue": 5971374
+   }
+  }
+ ],
+ "loanedPlayers": [],
+ "teamMoney": 1000000,
+ "playersNumber": 13,
+ "id": 22222222,
+ "managerId": 111111,
+ "startingWeek": "1",
+ "banned": false,
+ "teamValue": 233398356,
+ "teamPoints": 79,
+ "position": 5
+}

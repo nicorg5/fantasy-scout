@@ -1,0 +1,88 @@
+[
+ {
+  "discr": "marketPlayerLeague",
+  "playerMaster": {
+   "images": {
+    "transparent": {
+     "256x256": "https://assets-fantasy.llt-services.com/players/no-player/no-player-sq_256.png"
+    }
+   },
+   "id": "3053",
+   "teamId": 12,
+   "name": "Juan Francisco Funes Arjona",
+   "nickname": "Funes",
+   "slug": "juan-francisco-funes-arjona",
+   "positionId": 5,
+   "position": "Entrenador",
+   "marketValue": 979639,
+   "playerStatus": "ok",
+   "points": 2,
+   "averagePoints": 1
+  },
+  "id": "96979830",
+  "salePrice": 1005252,
+  "expirationDate": "2026-08-26T18:00:00+02:00",
+  "status": "on_sale",
+  "leagueType": "private",
+  "leagueId": 2345678,
+  "numberOfBids": 0
+ },
+ {
+  "discr": "marketPlayerLeague",
+  "playerMaster": {
+   "images": {
+    "transparent": {
+     "256x256": "https://assets-fantasy.llt-services.com/players/no-player/no-player-sq_256.png"
+    }
+   },
+   "id": "2951",
+   "teamId": 21,
+   "name": "Enrique Sánchez Flores",
+   "lastSeasonPoints": 28,
+   "nickname": "Sánchez Flores",
+   "slug": "quique-sanchez-flores",
+   "positionId": 5,
+   "position": "Entrenador",
+   "marketValue": 697042,
+   "playerStatus": "ok",
+   "points": 7,
+   "averagePoints": 3.5
+  },
+  "id": "96979833",
+  "salePrice": 710880,
+  "expirationDate": "2026-08-26T18:00:00+02:00",
+  "status": "on_sale",
+  "leagueType": "private",
+  "leagueId": 2345678,
+  "numberOfBids": 0
+ },
+ {
+  "discr": "marketPlayerTeam",
+  "playerMaster": {
+   "images": {
+    "transparent": {
+     "256x256": "https://assets-fantasy.llt-services.com/players/t191/p1991/256x256/p1991_t191_1_001_000.png"
+    }
+   },
+   "id": "1991",
+   "teamId": 18,
+   "name": "César Tárrega",
+   "lastSeasonPoints": 127,
+   "nickname": "Tárrega",
+   "slug": "cesar-tarrega",
+   "positionId": 2,
+   "position": "Defensa",
+   "marketValue": 10039656,
+   "playerStatus": "ok",
+   "points": 14,
+   "averagePoints": 7
+  },
+  "id": "6852091",
+  "salePrice": 8954954,
+  "expirationDate": "2026-08-26T23:36:12+02:00",
+  "status": "on_sale",
+  "leagueType": "private",
+  "leagueId": 2345678,
+  "numberOfOffers": 1
+ }
+]
