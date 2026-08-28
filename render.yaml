@@ -1,0 +1,33 @@
+# Blueprint de Render. Ver design.md §Estrategia de deploy.
+#
+# NINGÚN secreto vive aquí (R46): DATABASE_URL, TOKEN_ENCRYPTION_KEY y SESSION_SECRET
+# se cargan a mano en el dashboard de Render. `sync: false` es precisamente eso: "esta
+# variable existe, pero su valor lo pongo yo en el dashboard".
+#
+# La base de datos NO se declara aquí: vive en Neon, fuera de Render, porque el Postgres
+# gratuito de Render caduca a los 30 días.
+services:
+  - type: web
+    name: fantasy-scout
+    runtime: python
+    plan: free
+    region: frankfurt          # misma región que Neon: menos latencia por consulta
+    branch: main
+    autoDeploy: true           # modo On Commit, decisión del usuario
+    buildCommand: "pip install uv && uv sync --frozen --no-dev"
+    # Render inyecta $PORT; escuchar en 0.0.0.0 es obligatorio para que sea accesible.
+    startCommand: "uv run uvicorn fantasy.api.app:app --host 0.0.0.0 --port $PORT"
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false            # cadena de Neon, se pega en el dashboard
+      - key: TOKEN_ENCRYPTION_KEY
+        sync: false            # si cambia, las credenciales guardadas dejan de descifrarse
+      - key: SESSION_SECRET
+        sync: false
+      - key: FANTASY_ENTORNO
+        value: produccion      # activa Secure en la cookie de sesión (hay HTTPS)
+      - key: FANTASY_CONTACTO
+        value: mailto:nicolas.rdguezgomez@gmail.com
+      - key: PYTHON_VERSION
+        value: "3.12"

@@ -1,0 +1,49 @@
+# Snapshot diario del mercado (paso 9).
+#
+# Vive en GitHub Actions y no en Render porque el plan gratuito de Render no incluye
+# cron jobs. Ver design.md §Estrategia de deploy.
+#
+# DOBLE DISPARO deliberado: el cron de GitHub se define en UTC y Madrid alterna CET/CEST,
+# así que una sola hora se desfasaría media temporada. Con dos, al menos uno cae después
+# de las 18:00 de Madrid en ambas estaciones:
+#   16:30 UTC -> 18:30 CEST (verano, escribe) / 17:30 CET (invierno, NO escribe)
+#   17:30 UTC -> 19:30 CEST (verano, ya existe) / 18:30 CET (invierno, escribe)
+#
+# El disparo que cae antes de las 18:00 no hace daño: el script tiene una guardia horaria
+# que le impide escribir con el mercado abierto, y es idempotente por fecha.
+name: Snapshot diario del mercado
+
+on:
+  schedule:
+    - cron: "30 16 * * *"
+    - cron: "30 17 * * *"
+  workflow_dispatch:          # permite lanzarlo a mano desde la pestaña Actions
+
+concurrency:
+  # Si los dos disparos se solaparan, el segundo espera en vez de competir por la BD.
+  group: snapshot-diario
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20       # el scraping es serial y espaciado: tarda minutos, no horas
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Instalar dependencias
+        run: uv sync --frozen
+
+      - name: Ejecutar el snapshot
+        env:
+          # Secrets del repositorio: nunca aparecen en el log ni en el código.
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TOKEN_ENCRYPTION_KEY: ${{ secrets.TOKEN_ENCRYPTION_KEY }}
+          FANTASY_ENTORNO: produccion
+          FANTASY_CONTACTO: mailto:nicolas.rdguezgomez@gmail.com
+        run: uv run python scripts/snapshot_diario.py
