@@ -1,0 +1,171 @@
+"""Tipos de dominio de presentación: el contrato que consumen los templates.
+
+Regla no negociable del diseño: el **valor oficial** y el **bloque analítico scrapeado**
+son categorías distintas y viven en secciones separadas. El bloque analítico puede venir
+con estado ``unavailable`` sin que eso afecte al dato oficial, y ese estado se renderiza
+como badge, nunca como un 0 ni un guion mudo.
+
+Estos tipos los produce :mod:`fantasy.analytics.servicio` a partir de datos reales. En el
+paso 1 los produjo un módulo de mock, ya retirado: el contrato no cambió al sustituirlo,
+que era justo el objetivo de fijarlo antes de tener los datos.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Literal
+
+ORIGEN_OFICIAL = "oficial"
+"""Etiqueta del único origen posible del valor de mercado: la API oficial de LaLiga."""
+
+EstadoAnalitica = Literal["disponible", "unavailable"]
+DireccionTendencia = Literal["sube", "baja", "estable"]
+
+
+@dataclass(frozen=True)
+class MediaSemanal:
+    """Media diaria de variación de valor en los últimos 7 días.
+
+    Es un dato **real y observado**, no una proyección: sale de `data-diferencia7` de
+    futbolfantasy (variación acumulada de la semana), dividido entre 7.
+    """
+
+    media_diaria_euros: int
+    acumulado_euros: int
+
+    @property
+    def direccion(self) -> str:
+        if self.media_diaria_euros > 0:
+            return "sube"
+        if self.media_diaria_euros < 0:
+            return "baja"
+        return "estable"
+
+    @property
+    def simbolo(self) -> str:
+        return {"sube": "▲", "baja": "▼", "estable": "="}[self.direccion]
+
+
+@dataclass(frozen=True)
+class TendenciaValor:
+    """Tendencia del valor de mercado, tal y como la publica el sitio scrapeado."""
+
+    direccion: DireccionTendencia
+    variacion_euros: int
+
+    @property
+    def simbolo(self) -> str:
+        return {"sube": "▲", "baja": "▼", "estable": "="}[self.direccion]
+
+
+@dataclass(frozen=True)
+class ProbabilidadJugar:
+    """Probabilidad de ser titular en la próxima jornada, en porcentaje entero."""
+
+    porcentaje: int
+
+    def __post_init__(self) -> None:
+        if not 0 <= self.porcentaje <= 100:
+            raise ValueError(f"porcentaje fuera de rango: {self.porcentaje}")
+
+
+@dataclass(frozen=True)
+class BloqueAnalitico:
+    """Sección analítica de un jugador. Separada del dato oficial a propósito.
+
+    **Cada métrica tiene disponibilidad propia.** Decidido con datos reales
+    (2026-08-27): futbolfantasy publica tendencia de valor para prácticamente todos los
+    jugadores, pero probabilidad de jugar solo para los que entran en el once probable.
+    Exigir ambas descartaba tendencia real de 4 de 11 jugadores.
+
+    La invariante que sí se mantiene: **un dato ausente es siempre `None` + motivo**,
+    nunca un 0 ni un valor por defecto que se confunda con información real.
+    """
+
+    estado: EstadoAnalitica
+    tendencia_valor: TendenciaValor | None = None
+    media_semanal: MediaSemanal | None = None
+    probabilidad_jugar: ProbabilidadJugar | None = None
+    origen: str | None = None
+    capturado_en: datetime | None = None
+    motivo: str | None = None
+    motivo_probabilidad: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.estado == "disponible":
+            faltan = [
+                nombre
+                for nombre, valor in (
+                    ("origen", self.origen),
+                    ("capturado_en", self.capturado_en),
+                )
+                if valor is None
+            ]
+            if faltan:
+                raise ValueError("analítica disponible sin " + ", ".join(faltan))
+            if self.tendencia_valor is None and self.probabilidad_jugar is None:
+                raise ValueError("analítica disponible sin ninguna métrica")
+            # Una métrica ausente debe explicarse; si no, sería un hueco mudo.
+            if self.probabilidad_jugar is None and not self.motivo_probabilidad:
+                raise ValueError("falta la probabilidad y no se dice por qué")
+        elif self.estado == "unavailable":
+            if not self.motivo:
+                raise ValueError("analítica no disponible sin motivo")
+            if self.tendencia_valor is not None or self.probabilidad_jugar is not None:
+                raise ValueError("analítica no disponible no puede traer datos")
+        else:
+            raise ValueError(f"estado de analítica desconocido: {self.estado!r}")
+
+    @property
+    def disponible(self) -> bool:
+        """Hay al menos una métrica utilizable."""
+        return self.estado == "disponible"
+
+    @property
+    def completa(self) -> bool:
+        return self.disponible and self.probabilidad_jugar is not None
+
+    @classmethod
+    def desde_scraping(
+        cls,
+        *,
+        tendencia_valor: TendenciaValor | None = None,
+        media_semanal: MediaSemanal | None = None,
+        probabilidad_jugar: ProbabilidadJugar | None = None,
+        origen: str,
+        capturado_en: datetime,
+        motivo_probabilidad: str | None = None,
+    ) -> BloqueAnalitico:
+        return cls(
+            estado="disponible",
+            tendencia_valor=tendencia_valor,
+            media_semanal=media_semanal,
+            probabilidad_jugar=probabilidad_jugar,
+            origen=origen,
+            capturado_en=capturado_en,
+            motivo_probabilidad=motivo_probabilidad,
+        )
+
+    @classmethod
+    def no_disponible(cls, motivo: str, *, origen: str | None = None) -> BloqueAnalitico:
+        """Degradación total: el fallo se representa con motivo, nunca con datos vacíos."""
+        return cls(estado="unavailable", motivo=motivo, origen=origen)
+
+
+@dataclass(frozen=True)
+class JugadorPresentado:
+    """Un jugador tal y como lo pinta una fila de /plantilla o /mercado."""
+
+    id_oficial: str
+    nombre: str
+    equipo: str
+    posicion: str
+    valor_mercado_euros: int
+    analitica: BloqueAnalitico
+    origen_valor: str = ORIGEN_OFICIAL
+
+
+def formatear_euros(cantidad: int) -> str:
+    """1234567 -> '1.234.567 €' (separador de miles español)."""
+    return f"{cantidad:,}".replace(",", ".") + " €"
