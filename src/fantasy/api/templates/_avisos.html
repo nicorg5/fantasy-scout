@@ -1,0 +1,12 @@
+{# Avisos de fallos esperados. Un token caducado (dura 24h) es rutina, no un error. #}
+{% if aviso_token %}
+<article role="alert" class="aviso-token">
+  <p>{{ aviso_token }}</p>
+  <a href="/token" role="button">Pegar mi token de LaLiga</a>
+</article>
+{% endif %}
+{% if aviso_error %}
+<article role="alert" class="aviso-error">
+  <p>{{ aviso_error }}</p>
+</article>
+{% endif %}

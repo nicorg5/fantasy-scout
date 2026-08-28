@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block contenido %}
+<h1>Entrar</h1>
+{% if error %}
+<p role="alert" class="pico-color-red-500">{{ error }}</p>
+{% endif %}
+<form method="post" action="/login">
+  <label for="email">Email</label>
+  <input type="email" id="email" name="email" required autofocus>
+
+  <label for="password">Contraseña</label>
+  <input type="password" id="password" name="password" required>
+
+  <button type="submit">Entrar</button>
+</form>
+{% endblock %}

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ titulo }} · fantasy-scout</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <link rel="stylesheet" href="{{ url_for('static', path='estilos.css') }}">
+  {# htmx por CDN: sin bundler, sin npm, coherente con "nada de build step". #}
+  <script src="https://unpkg.com/htmx.org@2.0.4" integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" crossorigin="anonymous"></script>
+</head>
+<body>
+  <header class="container">
+    <nav>
+      <ul><li><strong>fantasy-scout</strong></li></ul>
+      <ul>
+        <li><a href="/plantilla">Mi plantilla</a></li>
+        <li><a href="/mercado">Mercado</a></li>
+        <li><a href="/token">Mi token</a></li>
+      </ul>
+    </nav>
+  </header>
+  <main class="container">
+    {% block contenido %}{% endblock %}
+  </main>
+  <footer class="container">
+    <small>El valor de mercado viene de la API oficial de LaLiga Fantasy; la tendencia y
+    la probabilidad de jugar, de futbolfantasy.com. Cada dato lleva su origen etiquetado.</small>
+  </footer>
+</body>
+</html>

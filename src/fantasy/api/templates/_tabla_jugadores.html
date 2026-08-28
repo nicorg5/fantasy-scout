@@ -1,0 +1,32 @@
+{# Marcado único para las dos pantallas. En viewport estrecho el CSS lo convierte en
+   cards apiladas; en ancho se ve como tabla. Sin JS: solo media queries. #}
+{% import "macros.html" as ui %}
+
+<table class="jugadores" id="tabla-jugadores">
+  <thead>
+    <tr>
+      <th scope="col">Jugador</th>
+      <th scope="col">Valor de mercado</th>
+      <th scope="col">Tendencia de valor</th>
+      <th scope="col">Media 7 días</th>
+      <th scope="col">Probabilidad de jugar</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for jugador in jugadores %}
+    <tr>
+      <td data-etiqueta="Jugador">
+        <strong>{{ jugador.nombre }}</strong>
+        <span class="meta">{{ jugador.equipo }} · {{ jugador.posicion }}</span>
+      </td>
+      <td data-etiqueta="Valor de mercado">
+        <span class="valor">{{ jugador.valor_mercado_euros | euros }}</span>
+        {{ ui.etiqueta_origen(jugador.origen_valor) }}
+      </td>
+      <td data-etiqueta="Tendencia de valor">{{ ui.celda_tendencia(jugador.analitica) }}</td>
+      <td data-etiqueta="Media 7 días">{{ ui.celda_media_semanal(jugador.analitica) }}</td>
+      <td data-etiqueta="Probabilidad de jugar">{{ ui.celda_probabilidad(jugador.analitica) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>

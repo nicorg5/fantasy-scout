@@ -1,0 +1,52 @@
+{# Componentes compartidos por /plantilla y /mercado. #}
+
+{# El badge de degradación: se pinta cuando el bloque analítico viene 'unavailable'.
+   Nunca un 0 ni un guion, que se confundirían con un dato real (R5). #}
+{% macro badge_no_disponible(analitica) -%}
+<span class="badge-no-disponible" title="{{ analitica.motivo }}">analítica no disponible</span>
+{%- endmacro %}
+
+{# Etiqueta de procedencia del dato, visible en pantalla y no solo en el payload. #}
+{% macro etiqueta_origen(origen) -%}
+<span class="origen">fuente: {{ origen }}</span>
+{%- endmacro %}
+
+{% macro celda_tendencia(analitica) -%}
+  {% if analitica.disponible and analitica.tendencia_valor %}
+    <span class="tendencia tendencia--{{ analitica.tendencia_valor.direccion }}">
+      {{ analitica.tendencia_valor.simbolo }}
+      {{ analitica.tendencia_valor.variacion_euros | euros }}
+    </span>
+    {{ etiqueta_origen(analitica.origen) }}
+  {% else %}
+    {{ badge_no_disponible(analitica) }}
+  {% endif %}
+{%- endmacro %}
+
+{# Cada métrica tiene disponibilidad propia: futbolfantasy publica tendencia para casi
+   todos, pero probabilidad solo para los del once probable. Un hueco siempre se explica. #}
+{% macro celda_probabilidad(analitica) -%}
+  {% if analitica.disponible and analitica.probabilidad_jugar %}
+    <span class="probabilidad">{{ analitica.probabilidad_jugar.porcentaje }} %</span>
+    {{ etiqueta_origen(analitica.origen) }}
+  {% elif analitica.disponible %}
+    <span class="badge-no-disponible" title="{{ analitica.motivo_probabilidad }}">sin dato</span>
+  {% else %}
+    {{ badge_no_disponible(analitica) }}
+  {% endif %}
+{%- endmacro %}
+
+{# Media diaria de los últimos 7 días. Dato observado, no una proyección. #}
+{% macro celda_media_semanal(analitica) -%}
+  {% if analitica.disponible and analitica.media_semanal %}
+    {% set m = analitica.media_semanal %}
+    <span class="tendencia tendencia--{{ m.direccion }}">
+      {{ m.simbolo }} {{ m.media_diaria_euros | abs | euros }}<span class="meta">/día</span>
+    </span>
+    <span class="meta">7 días: {{ m.acumulado_euros | euros }}</span>
+  {% elif analitica.disponible %}
+    <span class="badge-no-disponible" title="el sitio no publica la variación semanal de este jugador">sin dato</span>
+  {% else %}
+    {{ badge_no_disponible(analitica) }}
+  {% endif %}
+{%- endmacro %}

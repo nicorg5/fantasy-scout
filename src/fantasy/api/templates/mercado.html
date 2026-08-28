@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block contenido %}
+<h1>Mercado de hoy</h1>
+<p>Solo las subastas del día. El mercado cierra a las 18:00 (hora de Madrid).</p>
+{% include "_avisos.html" %}
+{% if jugadores %}
+<div class="barra-acciones">
+  {# htmx sustituye SOLO este bloque, no la página entera: en móvil se nota. #}
+  <button hx-get="/mercado/tabla"
+          hx-target="#tabla-jugadores"
+          hx-swap="outerHTML"
+          hx-indicator="#cargando"
+          class="secondary">Actualizar datos</button>
+  <span id="cargando" class="htmx-indicator">actualizando…</span>
+</div>
+{% include "_tabla_jugadores.html" %}
+{% endif %}
+{% endblock %}

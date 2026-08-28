@@ -1,0 +1,364 @@
+<title>Maqueta fantasy-scout</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+  :root {
+    --ground: #f4f6f4;
+    --panel: #ffffff;
+    --ink: #161d19;
+    --muted: #5f6d66;
+    --borde: #dde3df;
+    --acento: #1a7f4b;
+    --acento-suave: #e7f2eb;
+    --sombra: 0 1px 2px rgba(22, 29, 25, .06), 0 8px 24px rgba(22, 29, 25, .07);
+    --sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0f1411;
+      --panel: #161d19;
+      --ink: #e7ece9;
+      --muted: #94a39b;
+      --borde: #26302b;
+      --acento: #5ad48f;
+      --acento-suave: #16261d;
+      --sombra: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .35);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #0f1411;
+    --panel: #161d19;
+    --ink: #e7ece9;
+    --muted: #94a39b;
+    --borde: #26302b;
+    --acento: #5ad48f;
+    --acento-suave: #16261d;
+    --sombra: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .35);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .envoltorio {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 1.75rem 1rem 4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: .72rem;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--acento);
+    margin: 0;
+  }
+
+  h1 {
+    font-size: clamp(1.55rem, 5vw, 2.1rem);
+    font-weight: 600;
+    letter-spacing: -.02em;
+    text-wrap: balance;
+    margin: .25rem 0 0;
+  }
+
+  .entradilla {
+    margin: 0;
+    max-width: 60ch;
+    color: var(--muted);
+  }
+
+  .controles {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .75rem 1.25rem;
+    padding: .75rem 0;
+    background: color-mix(in srgb, var(--ground) 88%, transparent);
+    backdrop-filter: blur(8px);
+  }
+
+  .grupo { display: flex; flex-direction: column; gap: .35rem; }
+
+  .grupo > .etiqueta {
+    font-family: var(--mono);
+    font-size: .68rem;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .segmentado {
+    display: inline-flex;
+    background: var(--panel);
+    border: 1px solid var(--borde);
+    border-radius: 999px;
+    padding: 3px;
+  }
+
+  .segmentado input { position: absolute; opacity: 0; pointer-events: none; }
+
+  .segmentado label {
+    font-size: .87rem;
+    font-weight: 500;
+    padding: .35rem .95rem;
+    border-radius: 999px;
+    cursor: pointer;
+    color: var(--muted);
+    white-space: nowrap;
+    transition: background .15s ease, color .15s ease;
+  }
+
+  .segmentado input:checked + label {
+    background: var(--acento-suave);
+    color: var(--acento);
+  }
+
+  .segmentado input:focus-visible + label {
+    outline: 2px solid var(--acento);
+    outline-offset: 2px;
+  }
+
+  .escenario {
+    display: flex;
+    justify-content: center;
+  }
+
+  .marco {
+    width: 100%;
+    max-width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--borde);
+    border-radius: 14px;
+    box-shadow: var(--sombra);
+    overflow: hidden;
+    transition: max-width .2s ease;
+  }
+
+  body[data-ancho="movil"] .marco { max-width: 393px; }
+
+  .barra-marco {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .5rem .85rem;
+    border-bottom: 1px solid var(--borde);
+    font-family: var(--mono);
+    font-size: .7rem;
+    color: var(--muted);
+  }
+
+  .punto {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--acento);
+    flex: none;
+  }
+
+  .marco iframe {
+    display: block;
+    width: 100%;
+    height: 1400px;
+    border: 0;
+    background: #fff;
+  }
+
+  .revision {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  }
+
+  .criterio {
+    background: var(--panel);
+    border: 1px solid var(--borde);
+    border-radius: 12px;
+    padding: 1rem 1.1rem;
+    display: flex;
+    flex-direction: column;
+    gap: .4rem;
+  }
+
+  .criterio .ref {
+    font-family: var(--mono);
+    font-size: .68rem;
+    letter-spacing: .06em;
+    color: var(--acento);
+  }
+
+  .criterio h2 {
+    font-size: .98rem;
+    font-weight: 600;
+    margin: 0;
+    letter-spacing: -.01em;
+  }
+
+  .criterio p {
+    margin: 0;
+    font-size: .88rem;
+    color: var(--muted);
+  }
+
+  .nota {
+    border-left: 2px solid var(--acento);
+    padding-left: .9rem;
+    font-size: .88rem;
+    color: var(--muted);
+    max-width: 68ch;
+  }
+
+  .nota strong { color: var(--ink); font-weight: 600; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+</style>
+
+<div class="envoltorio">
+  <header>
+    <p class="eyebrow">fantasy-scout · paso 1 · datos mock</p>
+    <h1>Maqueta de plantilla y mercado</h1>
+    <p class="entradilla">
+      Las dos pantallas reales servidas por la app, con Pico.css y los estilos propios
+      incrustados. Sin base de datos, sin red y sin JavaScript propio: los jugadores son
+      inventados y llevan el sufijo <code>(mock)</code> a propósito.
+    </p>
+  </header>
+
+  <div class="controles">
+    <div class="grupo">
+      <span class="etiqueta">Pantalla</span>
+      <div class="segmentado" role="radiogroup" aria-label="Pantalla">
+        <input type="radio" name="pantalla" id="p-plantilla" value="plantilla" checked>
+        <label for="p-plantilla">Mi plantilla</label>
+        <input type="radio" name="pantalla" id="p-mercado" value="mercado">
+        <label for="p-mercado">Mercado</label>
+      </div>
+    </div>
+
+    <div class="grupo">
+      <span class="etiqueta">Ancho</span>
+      <div class="segmentado" role="radiogroup" aria-label="Ancho">
+        <input type="radio" name="ancho" id="a-movil" value="movil" checked>
+        <label for="a-movil">Móvil</label>
+        <input type="radio" name="ancho" id="a-completo" value="completo">
+        <label for="a-completo">Completo</label>
+      </div>
+    </div>
+  </div>
+
+  <div class="escenario">
+    <div class="marco">
+      <div class="barra-marco">
+        <span class="punto" aria-hidden="true"></span>
+        <span id="rotulo-marco">localhost:8000/plantilla</span>
+      </div>
+      <iframe id="lienzo" title="Maqueta de fantasy-scout"></iframe>
+    </div>
+  </div>
+
+  <p class="nota">
+    En el móvil, <strong>Completo</strong> es tu viewport real: es la vista que importa.
+    <strong>Móvil</strong> fuerza 393px, útil desde el escritorio para ver el layout de
+    cards sin abrir DevTools.
+  </p>
+
+  <section class="revision">
+    <article class="criterio">
+      <span class="ref">R3</span>
+      <h2>Las tres métricas por jugador</h2>
+      <p>Cada fila muestra valor de mercado, tendencia de valor y probabilidad de jugar.
+        ¿Falta alguna que quieras ver de un vistazo?</p>
+    </article>
+    <article class="criterio">
+      <span class="ref">R4</span>
+      <h2>Cards en móvil, tabla en ancho</h2>
+      <p>El corte está en 768px y el marcado es el mismo en ambos: la tabla se convierte
+        en cards por CSS. ¿Se lee bien con el pulgar?</p>
+    </article>
+    <article class="criterio">
+      <span class="ref">R5</span>
+      <h2>Analítica no disponible</h2>
+      <p>Un jugador de cada pantalla llega sin analítica a propósito. Sale un badge, nunca
+        un 0 ni un guion que se confunda con un dato real.</p>
+    </article>
+    <article class="criterio">
+      <span class="ref">R39</span>
+      <h2>Origen de cada dato</h2>
+      <p>Cada valor lleva su fuente en pantalla: <em>oficial</em> para el valor de mercado,
+        el sitio scrapeado para tendencia y probabilidad.</p>
+    </article>
+  </section>
+</div>
+
+<script type="text/html" id="doc-plantilla">__DOC_PLANTILLA__</script>
+<script type="text/html" id="doc-mercado">__DOC_MERCADO__</script>
+
+<script>
+  (function () {
+    var lienzo = document.getElementById('lienzo');
+    var rotulo = document.getElementById('rotulo-marco');
+    var docs = {
+      plantilla: document.getElementById('doc-plantilla').textContent,
+      mercado: document.getElementById('doc-mercado').textContent
+    };
+
+    function ajustarAlto() {
+      // srcdoc comparte origen con la página, así que normalmente se puede medir.
+      // Si el entorno lo impide, se queda el alto fijo del CSS y el iframe scrollea.
+      try {
+        var doc = lienzo.contentDocument;
+        if (!doc || !doc.body) return;
+        var alto = Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight);
+        if (alto > 0) lienzo.style.height = (alto + 8) + 'px';
+      } catch (e) { /* sin acceso: alto fijo */ }
+    }
+
+    function pintar() {
+      var pantalla = document.querySelector('input[name="pantalla"]:checked').value;
+      rotulo.textContent = 'localhost:8000/' + pantalla;
+      lienzo.srcdoc = docs[pantalla];
+    }
+
+    lienzo.addEventListener('load', function () {
+      ajustarAlto();
+      // Segunda pasada: las fuentes y el reflow del iframe pueden cambiar el alto.
+      setTimeout(ajustarAlto, 120);
+    });
+
+    document.querySelectorAll('input[name="pantalla"]').forEach(function (radio) {
+      radio.addEventListener('change', pintar);
+    });
+
+    document.querySelectorAll('input[name="ancho"]').forEach(function (radio) {
+      radio.addEventListener('change', function () {
+        document.body.dataset.ancho = radio.value;
+        setTimeout(ajustarAlto, 220);
+      });
+    });
+
+    window.addEventListener('resize', ajustarAlto);
+
+    document.body.dataset.ancho = 'movil';
+    pintar();
+  })();
+</script>

@@ -1,0 +1,162 @@
+/* Mobile-first sobre Pico.css. Sin build step y sin JS propio.
+   Base (móvil): cada fila de la tabla se pinta como una card apilada.
+   A partir de 768px: tabla de verdad. */
+
+.jugadores {
+  --borde: var(--pico-muted-border-color);
+}
+
+.jugadores thead {
+  /* En móvil la cabecera sobra: cada celda lleva su propia etiqueta. */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.jugadores,
+.jugadores tbody,
+.jugadores tr,
+.jugadores td {
+  display: block;
+  width: 100%;
+}
+
+.jugadores tr {
+  border: 1px solid var(--borde);
+  border-radius: var(--pico-border-radius);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.jugadores td {
+  border: 0;
+  padding: 0.35rem 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.jugadores td::before {
+  content: attr(data-etiqueta);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--pico-muted-color);
+  flex: 0 0 100%;
+}
+
+.jugadores td[data-etiqueta="Jugador"] {
+  border-bottom: 1px solid var(--borde);
+  padding-bottom: 0.6rem;
+  margin-bottom: 0.3rem;
+}
+
+.meta {
+  color: var(--pico-muted-color);
+  font-size: 0.9rem;
+  flex: 0 0 100%;
+}
+
+.valor {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.probabilidad {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.tendencia {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.tendencia--sube { color: #1a7f4b; }
+.tendencia--baja { color: #b3261e; }
+.tendencia--estable { color: var(--pico-muted-color); }
+
+/* Origen del dato: visible en pantalla, no solo en el payload (R39). */
+.origen {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--pico-muted-color);
+  border: 1px solid var(--borde);
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+  /* En móvil debe poder romper: si no, la píldora más larga desborda el viewport. */
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+
+/* Degradación explícita: un badge, jamás un 0 ni un guion mudo (R5). */
+.badge-no-disponible {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #8a5a00;
+  background: #fff4d6;
+  border: 1px solid #e0b65c;
+  border-radius: 999px;
+  padding: 0.1rem 0.6rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .tendencia--sube { color: #5ad48f; }
+  .tendencia--baja { color: #ff8a80; }
+  .badge-no-disponible {
+    color: #ffd98a;
+    background: #3a2e10;
+    border-color: #7a6224;
+  }
+}
+
+@media (min-width: 768px) {
+  .jugadores { display: table; }
+  .jugadores thead {
+    position: static;
+    width: auto;
+    height: auto;
+    clip: auto;
+    display: table-header-group;
+  }
+  .jugadores tbody { display: table-row-group; }
+  .jugadores tr {
+    display: table-row;
+    border: 0;
+    padding: 0;
+    margin: 0;
+  }
+  .jugadores td {
+    display: table-cell;
+    width: auto;
+    vertical-align: top;
+    border-bottom: 1px solid var(--borde);
+    padding: 0.75rem 0.5rem;
+  }
+  .jugadores td::before { content: none; }
+  .jugadores td[data-etiqueta="Jugador"] { margin-bottom: 0; }
+  .meta { display: block; }
+  .origen {
+    margin-left: 0.4rem;
+    white-space: nowrap;
+  }
+}
+
+/* --- Barra de acciones y refresco htmx --- */
+.barra-acciones {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  margin-bottom: .75rem;
+}
+.barra-acciones button { width: auto; margin: 0; }
+
+/* htmx-indicator: oculto salvo mientras la petición está en vuelo. */
+.htmx-indicator { opacity: 0; transition: opacity .2s; font-size: .85rem; color: var(--pico-muted-color); }
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator { opacity: 1; }
