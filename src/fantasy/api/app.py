@@ -12,7 +12,11 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from fantasy.analytics.presentacion import formatear_euros
-from fantasy.analytics.servicio import obtener_mercado, obtener_plantilla
+from fantasy.analytics.servicio import (
+    fecha_de_la_analitica,
+    obtener_mercado,
+    obtener_plantilla,
+)
 from fantasy.auth.dependencias import NoAutenticado, usuario_actual
 from fantasy.auth.rutas import montar_templates
 from fantasy.auth.rutas import router as auth_router
@@ -47,7 +51,7 @@ def raiz() -> RedirectResponse:
     return RedirectResponse(url="/plantilla")
 
 
-def _pagina_de_jugadores(request, plantilla_html: str, titulo: str, cargar):
+def _pagina_de_jugadores(request, plantilla_html: str, titulo: str, cargar, sesion=None):
     """Renderiza una pantalla de jugadores traduciendo los fallos esperados en avisos.
 
     Un token caducado es un evento normal (dura 24h), no un error del servidor: se
@@ -80,7 +84,11 @@ def _pagina_de_jugadores(request, plantilla_html: str, titulo: str, cargar):
     return TEMPLATES.TemplateResponse(
         request=request,
         name=plantilla_html,
-        context={"titulo": titulo, "jugadores": jugadores},
+        context={
+            "titulo": titulo,
+            "jugadores": jugadores,
+            "analitica_de": fecha_de_la_analitica(sesion),
+        },
     )
 
 
@@ -137,7 +145,7 @@ def plantilla(
 ):
     return _pagina_de_jugadores(
         request, "plantilla.html", "Mi plantilla",
-        lambda: obtener_plantilla(sesion, usuario.id),
+        lambda: obtener_plantilla(sesion, usuario.id), sesion,
     )
 
 
@@ -149,5 +157,5 @@ def mercado(
 ):
     return _pagina_de_jugadores(
         request, "mercado.html", "Mercado de hoy",
-        lambda: obtener_mercado(sesion, usuario.id),
+        lambda: obtener_mercado(sesion, usuario.id), sesion,
     )

@@ -105,13 +105,28 @@ def test_con_analitica_se_guardan_ambos_bloques(limpio):
     assert fila.tendencia_variacion_euros == 5000
 
 
-def test_deteccion_de_snapshot_existente(limpio):
-    """R41: base de la idempotencia del cron."""
+def test_deteccion_de_trabajo_ya_hecho(limpio):
+    """R41: base de la idempotencia del cron.
+
+    "Hecho" exige snapshot **y** analitica: ver
+    test_snapshot_sin_analitica_no_cuenta_como_trabajo_hecho.
+    """
+    from fantasy.storage.modelos import AnaliticaDiaria
+
     assert snapshot_diario._ya_hay_snapshot(limpio, HOY) is False
 
     snapshot_diario._guardar(limpio, HOY, [_SubastaFalsa(_OficialFalso())], [_presentado(True)])
+    limpio.add(AnaliticaDiaria(
+        fecha=HOY, id_externo="X", nombre_externo="x", equipo_externo="11",
+        origen="futbolfantasy.com", capturado_en=datetime.now(timezone.utc),
+    ))
+    limpio.commit()
 
-    assert snapshot_diario._ya_hay_snapshot(limpio, HOY) is True
+    try:
+        assert snapshot_diario._ya_hay_snapshot(limpio, HOY) is True
+    finally:
+        limpio.execute(delete(AnaliticaDiaria).where(AnaliticaDiaria.fecha == HOY))
+        limpio.commit()
 
 
 @pytest.mark.parametrize(
@@ -147,3 +162,29 @@ def test_solo_se_usan_usuarios_con_credenciales(sesion_db, usuario_de_prueba):
     encontrados = snapshot_diario._usuarios_con_credenciales(sesion_db, usuario.email)
 
     assert encontrados == [], "sin credenciales guardadas no debe seleccionarse"
+
+
+def test_snapshot_sin_analitica_no_cuenta_como_trabajo_hecho(limpio):
+    """Si falta la analitica, el dia NO esta hecho aunque exista el snapshot.
+
+    Mirar solo market_snapshot dejaba la web sin datos hasta el dia siguiente: paso de
+    verdad en local. La analitica es lo que consume la web, asi que cuenta igual.
+    """
+    from fantasy.storage.modelos import AnaliticaDiaria
+
+    snapshot_diario._guardar(limpio, HOY, [_SubastaFalsa(_OficialFalso())], [_presentado(True)])
+
+    # Hay snapshot pero no analitica: el trabajo NO esta completo.
+    assert snapshot_diario._ya_hay_snapshot(limpio, HOY) is False
+
+    limpio.add(AnaliticaDiaria(
+        fecha=HOY, id_externo="X", nombre_externo="x", equipo_externo="11",
+        origen="futbolfantasy.com", capturado_en=datetime.now(timezone.utc),
+    ))
+    limpio.commit()
+
+    try:
+        assert snapshot_diario._ya_hay_snapshot(limpio, HOY) is True
+    finally:
+        limpio.execute(delete(AnaliticaDiaria).where(AnaliticaDiaria.fecha == HOY))
+        limpio.commit()

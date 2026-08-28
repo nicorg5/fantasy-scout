@@ -28,12 +28,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from fantasy.analytics.servicio import componer, recolectar_analitica
+from fantasy.analytics.servicio import (
+    Analitica,
+    componer,
+    recolectar_analitica_de_bd,
+    scrapear_todo_para_guardar,
+)
+from fantasy.storage.analitica_repo import guardar_analitica_del_dia, purgar_analitica_antigua
 from fantasy.official.cliente import ClienteOficial
 from fantasy.official.errores import ErrorAPIOficial
+from fantasy.config import obtener_config
 from fantasy.storage.engine import obtener_fabrica_sesiones
 from fantasy.storage.fechas import ahora_en_madrid, fecha_local, mercado_ya_cerro
 from fantasy.storage.modelos import (
+    AnaliticaDiaria,
     CredencialesLaLiga,
     EstadoAnalitica,
     Jugador,
@@ -49,11 +57,25 @@ logger = logging.getLogger("snapshot_diario")
 
 
 def _ya_hay_snapshot(sesion: Session, dia: date) -> bool:
-    return bool(
+    """El trabajo del dia esta hecho solo si estan LAS DOS COSAS.
+
+    Mirar unicamente `market_snapshot` no basta: si el snapshot existe pero falta la
+    analitica, la web se queda sin datos hasta el dia siguiente. Paso de verdad en local
+    y habria pasado igual en produccion.
+    """
+    hay_snapshot = bool(
         sesion.scalar(
             select(func.count()).select_from(SnapshotMercado).where(SnapshotMercado.fecha == dia)
         )
     )
+    hay_analitica = bool(
+        sesion.scalar(
+            select(func.count()).select_from(AnaliticaDiaria).where(AnaliticaDiaria.fecha == dia)
+        )
+    )
+    if hay_snapshot and not hay_analitica:
+        logger.info("hay snapshot de %s pero falta la analitica: se regenera", dia)
+    return hay_snapshot and hay_analitica
 
 
 def _usuarios_con_credenciales(sesion: Session, email: str | None) -> list[Usuario]:
@@ -150,8 +172,18 @@ def main() -> None:
                 continue
 
             oficiales = [s.jugador for s in subastas]
-            # Si el scraping falla, esto devuelve analítica vacía y los oficiales siguen.
-            presentados = componer(oficiales, recolectar_analitica(oficiales))
+
+            # Se scrapea TODO el sitio (~669 jugadores), no solo los del mercado: la web
+            # necesitara despues analitica de los jugadores de cada plantilla, que no
+            # estan en subasta. Guardarlo aqui es lo que permite que la web no scrapee.
+            tendencias, probabilidades = scrapear_todo_para_guardar()
+            guardados = guardar_analitica_del_dia(sesion, dia, tendencias, probabilidades)
+            logger.info("analitica diaria guardada: %d jugadores", guardados)
+
+            # Se compone leyendo de la BD, igual que hara la web: si esto sale bien, la
+            # web tambien funcionara.
+            analitica = recolectar_analitica_de_bd(sesion, oficiales)
+            presentados = componer(oficiales, analitica)
 
             escritos = _guardar(sesion, dia, subastas, presentados)
             con_analitica = sum(1 for p in presentados if p.analitica.disponible)
@@ -159,10 +191,17 @@ def main() -> None:
                 "snapshot guardado: %d jugadores, %d con analítica, %d sin",
                 escritos, con_analitica, escritos - con_analitica,
             )
+            logger.info("matching: %d jugadores sin emparejar", analitica.sin_emparejar)
 
             borrados = purgar_snapshots_antiguos(sesion)
-            if borrados:
-                logger.info("purga de retención: %d snapshots antiguos borrados", borrados)
+            borrados_analitica = purgar_analitica_antigua(
+                sesion, dia, obtener_config().retencion_dias
+            )
+            if borrados or borrados_analitica:
+                logger.info(
+                    "purga de retención: %d snapshots y %d filas de analítica",
+                    borrados, borrados_analitica,
+                )
             return
 
         logger.error("ningún usuario pudo leer el mercado; no se ha guardado nada")

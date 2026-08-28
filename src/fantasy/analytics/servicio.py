@@ -17,6 +17,7 @@ import re
 import uuid
 from difflib import SequenceMatcher
 from dataclasses import dataclass
+from datetime import date
 
 from sqlalchemy.orm import Session
 
@@ -24,6 +25,7 @@ from fantasy.analytics.presentacion import BloqueAnalitico, JugadorPresentado
 from fantasy.matching.analitica import construir_bloque_analitico
 from fantasy.matching.emparejador import CandidatoExterno, Emparejamiento, emparejar
 from fantasy.matching.equipos import (
+    cargar_mapa_equipos,
     equipo_futbolfantasy,
     nombre_equipo,
     slug_equipo_futbolfantasy,
@@ -33,6 +35,12 @@ from fantasy.official.cliente import ClienteOficial
 from fantasy.official.modelos import JugadorOficial
 from fantasy.scrapers.cliente_http import ClienteScraping
 from fantasy.scrapers.degradacion import obtener_probabilidades_equipo, obtener_tendencias_mercado
+from fantasy.storage.analitica_repo import (
+    a_probabilidad,
+    a_tendencia,
+    leer_analitica_mas_reciente,
+)
+from fantasy.storage.fechas import fecha_local
 
 logger = logging.getLogger("fantasy.analytics.servicio")
 
@@ -51,6 +59,11 @@ class Analitica:
     emparejamientos: dict[str, Emparejamiento]
     tendencias: dict
     probabilidades: dict
+    # R27: una subida brusca de este numero avisa de que algo se rompio upstream.
+    sin_emparejar: int = 0
+    # Fecha de captura: la UI la muestra para que nadie confunda analitica de ayer con
+    # analitica de ahora mismo.
+    capturado_el: date | None = None
 
     @classmethod
     def vacia(cls) -> Analitica:
@@ -61,9 +74,44 @@ class Analitica:
         return bool(self.tendencias)
 
 
+def recolectar_analitica_de_bd(sesion: Session, oficiales: list[JugadorOficial]) -> Analitica:
+    """Lee la analítica ya guardada y empareja. **No toca la red.**
+
+    Es lo que usan las pantallas: el scraping es serial y espaciado (~1 min para el
+    mercado), así que hacerlo dentro de una petición HTTP hacía la web inservible. El
+    cron lo deja guardado de noche y aquí solo se consulta y se empareja, que es cálculo
+    puro.
+    """
+    fecha, filas = leer_analitica_mas_reciente(sesion, fecha_local())
+    if not filas:
+        logger.warning("no hay analítica guardada: se servirá como no disponible")
+        return Analitica.vacia()
+
+    candidatos = [
+        CandidatoExterno(f.id_externo, f.nombre_externo, f.equipo_externo) for f in filas
+    ]
+    tendencias = {f.id_externo: a_tendencia(f) for f in filas}
+    probabilidades = {
+        f.id_externo: p for f in filas if (p := a_probabilidad(f)) is not None
+    }
+
+    emparejados, sin_emparejar = emparejar(oficiales, candidatos, overrides=cargar_overrides())
+    if sin_emparejar:
+        logger.info("jugadores sin emparejar: %d de %d", len(sin_emparejar), len(oficiales))
+
+    return Analitica(
+        {e.id_oficial: e for e in emparejados},
+        tendencias,
+        probabilidades,
+        len(sin_emparejar),
+        capturado_el=fecha,
+    )
+
+
 def recolectar_analitica(oficiales: list[JugadorOficial]) -> Analitica:
-    """Scrapea y empareja. **Nunca lanza**: si algo falla, devuelve `Analitica.vacia()` y
-    la composición producirá bloques 'no disponible' sin romper nada."""
+    """Scrapea EN VIVO y empareja. Solo la usa el cron: es lenta por diseño (rate limit).
+
+    **Nunca lanza**: si algo falla, devuelve `Analitica.vacia()`."""
     cliente = ClienteScraping()
 
     tendencias_lista = obtener_tendencias_mercado(cliente)
@@ -85,7 +133,9 @@ def recolectar_analitica(oficiales: list[JugadorOficial]) -> Analitica:
         )
 
     probabilidades = _probabilidades_de_los_equipos(cliente, oficiales, emparejados)
-    return Analitica({e.id_oficial: e for e in emparejados}, tendencias, probabilidades)
+    return Analitica(
+        {e.id_oficial: e for e in emparejados}, tendencias, probabilidades, len(sin_emparejar)
+    )
 
 
 def _probabilidades_de_los_equipos(
@@ -182,6 +232,16 @@ def componer(oficiales: list[JugadorOficial], analitica: Analitica) -> list[Juga
     return presentados
 
 
+def fecha_de_la_analitica(sesion: Session) -> date | None:
+    """De cuando son los datos analiticos que se estan sirviendo.
+
+    La vista lo muestra: analitica de ayer presentada sin avisar seria enganosa, sobre
+    todo cuando el mercado cambia cada dia a las 18:00.
+    """
+    fecha, _ = leer_analitica_mas_reciente(sesion, fecha_local())
+    return fecha
+
+
 def obtener_mercado(sesion: Session, usuario_id: uuid.UUID) -> list[JugadorPresentado]:
     """Mercado del día enriquecido.
 
@@ -192,7 +252,7 @@ def obtener_mercado(sesion: Session, usuario_id: uuid.UUID) -> list[JugadorPrese
     league_id, _ = cliente.obtener_liga_y_equipo()
     subastas = cliente.obtener_mercado(league_id)
     oficiales = [s.jugador for s in subastas]
-    return componer(oficiales, recolectar_analitica(oficiales))
+    return componer(oficiales, recolectar_analitica_de_bd(sesion, oficiales))
 
 
 def obtener_plantilla(sesion: Session, usuario_id: uuid.UUID) -> list[JugadorPresentado]:
@@ -200,4 +260,61 @@ def obtener_plantilla(sesion: Session, usuario_id: uuid.UUID) -> list[JugadorPre
     league_id, team_id = cliente.obtener_liga_y_equipo()
     plantilla = cliente.obtener_plantilla(league_id, team_id)
     oficiales = [j.jugador for j in plantilla.jugadores]
-    return componer(oficiales, recolectar_analitica(oficiales))
+    return componer(oficiales, recolectar_analitica_de_bd(sesion, oficiales))
+
+
+def scrapear_todo_para_guardar(cliente: ClienteScraping | None = None):
+    """Scrapea la analítica de TODOS los jugadores, para que el cron la persista.
+
+    Distinto de `recolectar_analitica`, que solo resuelve los jugadores que hacen falta
+    en ese momento: aquí se guarda todo lo que el sitio publica, porque la web necesitará
+    después analítica de jugadores que no están en el mercado (los de cada plantilla).
+
+    Devuelve (tendencias, probabilidades indexadas por id de futbolfantasy). Nunca lanza.
+    """
+    from fantasy.matching.equipos import cargar_mapa_equipos
+    from fantasy.matching.normalizacion import normalizar
+
+    cliente = cliente or ClienteScraping()
+
+    tendencias = obtener_tendencias_mercado(cliente)
+    if not tendencias:
+        logger.warning("scraping completo: sin tendencias, no hay nada que guardar")
+        return [], {}
+
+    # Una página por equipo, con el rate limit de por medio. Lento a propósito: esto
+    # corre de noche y nadie espera.
+    slug_por_id = {v["id"]: v["slug"] for v in cargar_mapa_equipos().values() if v.get("slug")}
+    equipos = sorted({t.equipo_externo for t in tendencias if t.equipo_externo})
+
+    por_slug: dict[str, object] = {}
+    for id_equipo in equipos:
+        slug = slug_por_id.get(id_equipo)
+        if not slug:
+            logger.info("equipo %s sin slug conocido: se omite su probabilidad", id_equipo)
+            continue
+        for probabilidad in obtener_probabilidades_equipo(cliente, slug):
+            por_slug[_sin_sufijo(probabilidad.slug)] = probabilidad
+
+    # Las dos páginas del sitio no comparten clave: se cruzan por nombre, con la misma
+    # tolerancia que el resto (sus slugs pierden la primera letra si va acentuada).
+    probabilidades: dict[str, object] = {}
+    for t in tendencias:
+        objetivo = normalizar(t.nombre).replace(" ", "-")
+        encontrada = por_slug.get(objetivo)
+        if encontrada is None:
+            mejor, similitud = None, 0.0
+            for slug, valor in por_slug.items():
+                ratio = SequenceMatcher(None, objetivo, slug).ratio()
+                if ratio > similitud:
+                    mejor, similitud = valor, ratio
+            if similitud >= UMBRAL_SLUG:
+                encontrada = mejor
+        if encontrada is not None:
+            probabilidades[t.id_futbolfantasy] = encontrada
+
+    logger.info(
+        "scraping completo: %d jugadores, %d con probabilidad",
+        len(tendencias), len(probabilidades),
+    )
+    return tendencias, probabilidades

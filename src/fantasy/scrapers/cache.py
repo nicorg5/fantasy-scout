@@ -32,7 +32,7 @@ def leer(url: str, ventana_segundos: float) -> str | None:
         logger.info("caché caducada para %s (edad %.0fs > %.0fs)", url, edad, ventana_segundos)
         return None
 
-    logger.info("caché HIT para %s (edad %.0fs)", url)
+    logger.info("caché HIT para %s (edad %.0fs)", url, edad)
     return entrada["html"]
 
 
