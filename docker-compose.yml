@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fantasy_scout_postgres
+    environment:
+      POSTGRES_USER: fantasy
+      POSTGRES_PASSWORD: fantasy
+      POSTGRES_DB: fantasy_scout
+    ports:
+      # 5433, no 5432: el 5432 ya lo usa el postgres de otro proyecto local.
+      - "5433:5432"
+    volumes:
+      - fantasy_scout_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fantasy -d fantasy_scout"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  fantasy_scout_pgdata:
