@@ -169,3 +169,53 @@ class JugadorPresentado:
 def formatear_euros(cantidad: int) -> str:
     """1234567 -> '1.234.567 €' (separador de miles español)."""
     return f"{cantidad:,}".replace(",", ".") + " €"
+
+
+@dataclass(frozen=True)
+class ClausulaPresentada:
+    """Una fila de la pantalla de clausulazos.
+
+    Mismo criterio que `JugadorPresentado`: el bloque oficial y el analitico van
+    separados y el analitico puede venir como no disponible sin afectar al resto.
+    """
+
+    id_oficial: str
+    nombre: str
+    manager: str
+    equipo: str
+    posicion: str
+    valor_mercado_euros: int
+    clausula_euros: int
+    sobrepago_euros: int
+    sobrepago_pct: float | None
+    # None = ya se puede fichar. Si no, segundos que faltan para que se libere.
+    segundos_para_desbloqueo: float | None
+    blindado: bool
+    analitica: BloqueAnalitico
+
+    @property
+    def fichable(self) -> bool:
+        return not self.blindado and self.segundos_para_desbloqueo is None
+
+    @property
+    def espera_legible(self) -> str:
+        """'2d 5h' o '3h 20m'. Un numero de segundos no dice nada de un vistazo."""
+        if self.blindado:
+            return "blindado"
+        if self.segundos_para_desbloqueo is None:
+            return "disponible"
+
+        total = int(self.segundos_para_desbloqueo)
+        dias, resto = divmod(total, 86400)
+        horas, resto = divmod(resto, 3600)
+        minutos = resto // 60
+        if dias:
+            return f"{dias}d {horas}h"
+        if horas:
+            return f"{horas}h {minutos}m"
+        return f"{minutos}m"
+
+    @property
+    def origen_valor(self) -> str:
+        """Valor, clausula y manager vienen de la API oficial."""
+        return "oficial"

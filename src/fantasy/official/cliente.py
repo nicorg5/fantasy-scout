@@ -14,7 +14,13 @@ from sqlalchemy.orm import Session
 
 from fantasy.auth.credenciales_store import obtener_token_valido
 from fantasy.official.errores import RespuestaInesperada, TokenInvalido
-from fantasy.official.modelos import Plantilla, SubastaMercado, parsear_mercado
+from fantasy.official.modelos import (
+    JugadorConClausula,
+    Plantilla,
+    SubastaMercado,
+    parsear_mercado,
+    parsear_plantilla_de_manager,
+)
 
 HOST = "https://fantasy-api.llt-services.com"
 COMPETICION = 1
@@ -95,3 +101,43 @@ class ClienteOficial:
 
         # El id de liga es CADENA (puede llevar ceros a la izquierda); el de equipo, entero.
         return str(liga["id"]), int(equipo["id"])
+
+    def obtener_equipos_de_la_liga(self, league_id: str) -> list[tuple[int, str]]:
+        """Devuelve [(team_id, nombre del manager)] de todos los equipos de la liga.
+
+        Sale de la clasificacion, que es la unica via para enumerar los equipos: no hay
+        endpoint de "listar equipos".
+        """
+        datos = self._get(f"/api/v1/competition/{COMPETICION}/leagues/{league_id}/standing")
+        filas = datos if isinstance(datos, list) else datos.get("data", [])
+
+        equipos = []
+        for i, fila in enumerate(filas):
+            equipo = (fila or {}).get("team") or {}
+            if "id" not in equipo:
+                raise RespuestaInesperada(f"standing[{i}].team.id", "falta el id de equipo")
+            manager = (equipo.get("manager") or {}).get("managerName") or "desconocido"
+            equipos.append((int(equipo["id"]), str(manager)))
+        return equipos
+
+    def obtener_clausulas_de_la_liga(
+        self, league_id: str, excluir_team_id: int | None = None
+    ) -> list[JugadorConClausula]:
+        """Todos los jugadores de la liga con su clausula.
+
+        Cuesta 1 + N peticiones (la clasificacion y una plantilla por manager): ~3,6 s
+        con 10 managers. No se cachea a proposito: las clausulas cambian en cuanto
+        alguien ficha, y un dato viejo aqui llevaria a intentar un fichaje imposible.
+
+        `excluir_team_id` sirve para dejar fuera al propio usuario: clausularse a uno
+        mismo no tiene sentido.
+        """
+        jugadores: list[JugadorConClausula] = []
+        for team_id, _manager in self.obtener_equipos_de_la_liga(league_id):
+            if excluir_team_id is not None and team_id == excluir_team_id:
+                continue
+            datos = self._get(
+                f"/api/v1/competition/{COMPETICION}/leagues/{league_id}/teams/{team_id}"
+            )
+            jugadores.extend(parsear_plantilla_de_manager(datos, f"teams[{team_id}]"))
+        return jugadores

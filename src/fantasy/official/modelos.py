@@ -186,3 +186,86 @@ def parsear_mercado(datos: Any, camino: str = "market") -> list[SubastaMercado]:
             continue
         subastas.append(SubastaMercado.desde_api(elemento, f"{camino}[{i}]"))
     return subastas
+
+
+@dataclass(frozen=True)
+class JugadorConClausula:
+    """Un jugador de la plantilla de algún manager, con su cláusula de rescisión.
+
+    Sale de `/leagues/{id}/teams/{teamId}`, que se puede pedir para **cualquier** equipo
+    de la liga, no solo el propio.
+    """
+
+    jugador: JugadorOficial
+    manager: str
+    manager_id: str
+    clausula: int
+    # Hasta cuándo está bloqueada. Puede faltar: no todo jugador tiene bloqueo activo.
+    bloqueada_hasta: datetime | None
+    blindado: bool
+
+    def fichable(self, ahora: datetime) -> bool:
+        """Un jugador solo se puede clausular si no está blindado y el bloqueo ya venció."""
+        if self.blindado:
+            return False
+        return self.bloqueada_hasta is None or self.bloqueada_hasta <= ahora
+
+    def segundos_para_desbloqueo(self, ahora: datetime) -> float | None:
+        """Segundos que faltan, o None si ya está libre. Es el criterio de orden."""
+        if self.bloqueada_hasta is None or self.bloqueada_hasta <= ahora:
+            return None
+        return (self.bloqueada_hasta - ahora).total_seconds()
+
+    @property
+    def sobrepago_euros(self) -> int:
+        """Lo que pagas de más respecto al valor de mercado."""
+        return self.clausula - self.jugador.valor_mercado
+
+    @property
+    def sobrepago_pct(self) -> float | None:
+        """El porcentaje permite comparar jugadores de precios muy distintos.
+
+        None si el valor de mercado es 0: dividir daría infinito, y un porcentaje sin
+        sentido es peor que no mostrarlo.
+        """
+        if not self.jugador.valor_mercado:
+            return None
+        return self.sobrepago_euros / self.jugador.valor_mercado * 100
+
+
+def parsear_plantilla_de_manager(datos: Any, camino: str = "plantilla") -> list[JugadorConClausula]:
+    """Extrae los jugadores con cláusula de la plantilla de un manager.
+
+    El manager viene por jugador (`player.manager`) y no solo en la raíz, porque un
+    jugador cedido puede pertenecer a otro. Se usa el del jugador, que es el que manda.
+    """
+    crudos = _exigir(datos, "players", list, camino)
+    manager_equipo = (datos.get("manager") or {}) if isinstance(datos, dict) else {}
+
+    jugadores = []
+    for i, crudo in enumerate(crudos):
+        sub = f"{camino}.players[{i}]"
+        manager = crudo.get("manager") or manager_equipo
+        crudo_fecha = crudo.get("buyoutClauseLockedEndTime")
+        bloqueada_hasta = None
+        if crudo_fecha:
+            try:
+                bloqueada_hasta = datetime.fromisoformat(crudo_fecha)
+            except ValueError as exc:
+                raise RespuestaInesperada(
+                    f"{sub}.buyoutClauseLockedEndTime", f"fecha no interpretable: {crudo_fecha!r}"
+                ) from exc
+
+        jugadores.append(
+            JugadorConClausula(
+                jugador=JugadorOficial.desde_api(
+                    _exigir(crudo, "playerMaster", dict, sub), f"{sub}.playerMaster"
+                ),
+                manager=str(manager.get("managerName") or "desconocido"),
+                manager_id=str(manager.get("id") or ""),
+                clausula=_exigir(crudo, "buyoutClause", int, sub),
+                bloqueada_hasta=bloqueada_hasta,
+                blindado=bool(crudo.get("isShielded", False)),
+            )
+        )
+    return jugadores
