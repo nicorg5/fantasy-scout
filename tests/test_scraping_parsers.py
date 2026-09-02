@@ -50,16 +50,26 @@ def test_probabilidades_se_parsean(html_equipo):
 
     assert probabilidades
     for p in probabilidades:
+        assert p.id_futbolfantasy
         assert p.slug
         assert 0 <= p.probabilidad.porcentaje <= 100
         assert p.capturado_en is not None
 
 
-def test_slug_no_incluye_sufijo_de_temporada(html_equipo):
-    """Bug real cazado con datos propios: el href a veces trae
-    '.../jugadores/dani-sanchez/laliga-26-27'. El slug es solo el primer segmento."""
+def test_id_futbolfantasy_es_el_dato_de_cruce_no_el_slug(html_equipo):
+    """El id numérico (de `class="jugador_15344"`) es el mismo que usa la tabla de
+    mercado: verificado con datos reales (2026-09-02), es un dato de identidad, no una
+    aproximación por nombre."""
     probabilidades = parsear_probabilidad_equipo(html_equipo)
-    assert any(p.slug == "dani-sanchez" for p in probabilidades)
+    assert all(p.id_futbolfantasy.isdigit() for p in probabilidades)
+    assert len({p.id_futbolfantasy for p in probabilidades}) == len(probabilidades)
+
+
+def test_no_incluye_sufijo_de_temporada_en_el_slug(html_equipo):
+    """Bug real cazado con datos propios: el href a veces trae
+    '.../jugadores/dani-lorenzo-1'. El slug es solo el primer segmento tras /jugadores/,
+    tal cual viene — el sufijo pertenece al slug (desambigua homónimos en el sitio)."""
+    probabilidades = parsear_probabilidad_equipo(html_equipo)
     assert not any("/" in p.slug for p in probabilidades)
 
 
@@ -88,13 +98,24 @@ def test_fila_de_mercado_con_atributo_roto_se_salta_sin_tumbar_el_resto():
 
 
 def test_jugador_de_equipo_con_atributo_roto_se_salta_sin_tumbar_el_resto():
+    """R23: un bloque sin span de probabilidad, o con texto no numérico, no debe abortar
+    el parseo de los demás."""
     html = """
-    <a class="camiseta" data-probabilidad="70%" href="/jugadores/sin-porcentaje-valido"></a>
-    <a class="camiseta" data-probabilidad="abc" href="/jugadores/porcentaje-invalido"></a>
+    <div class="jugador_1 tipo_campo campo camiseta-wrapper">
+      <a class="jugador my-auto" href="https://www.futbolfantasy.com/jugadores/bueno"></a>
+      <span class="probabilidad-widget"><span class="prob-3">70%</span></span>
+    </div>
+    <div class="jugador_2 tipo_campo campo camiseta-wrapper">
+      <a class="jugador my-auto" href="https://www.futbolfantasy.com/jugadores/sin-widget"></a>
+    </div>
+    <div class="jugador_3 tipo_campo campo camiseta-wrapper">
+      <a class="jugador my-auto" href="https://www.futbolfantasy.com/jugadores/no-numerico"></a>
+      <span class="probabilidad-widget"><span class="prob-3">abc</span></span>
+    </div>
     """
     resultado = parsear_probabilidad_equipo(html)
     assert len(resultado) == 1
-    assert resultado[0].slug == "sin-porcentaje-valido"
+    assert resultado[0].slug == "bueno"
 
 
 def test_media_semanal_es_la_diferencia7_dividida(html_mercado):

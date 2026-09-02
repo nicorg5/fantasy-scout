@@ -130,6 +130,10 @@ def a_probabilidad(fila: AnaliticaDiaria) -> ProbabilidadScrapeada | None:
     if fila.probabilidad_jugar is None:
         return None
     return ProbabilidadScrapeada(
+        # `id_externo` YA es el id numérico de futbolfantasy (así se guarda desde
+        # `guardar_analitica_del_dia`); no se guarda el slug aparte, así que aquí solo
+        # es best-effort para trazabilidad.
+        id_futbolfantasy=fila.id_externo,
         slug=fila.id_externo,
         probabilidad=ProbabilidadJugar(porcentaje=fila.probabilidad_jugar),
         capturado_en=fila.capturado_en,

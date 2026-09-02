@@ -70,7 +70,7 @@ def test_probabilidad_ausente_se_guarda_como_null(limpio):
 
 
 def test_probabilidad_presente_se_guarda(limpio):
-    prob = {"A": ProbabilidadScrapeada("a", ProbabilidadJugar(porcentaje=80), AHORA)}
+    prob = {"A": ProbabilidadScrapeada(id_futbolfantasy="A", slug="a", probabilidad=ProbabilidadJugar(porcentaje=80), capturado_en=AHORA)}
 
     guardar_analitica_del_dia(limpio, DIA, [_tendencia()], prob)
 
@@ -97,7 +97,7 @@ def test_se_devuelve_la_fecha_para_poder_mostrarla(limpio):
 
 
 def test_reconstruccion_conserva_los_datos(limpio):
-    prob = {"A": ProbabilidadScrapeada("a", ProbabilidadJugar(porcentaje=65), AHORA)}
+    prob = {"A": ProbabilidadScrapeada(id_futbolfantasy="A", slug="a", probabilidad=ProbabilidadJugar(porcentaje=65), capturado_en=AHORA)}
     guardar_analitica_del_dia(limpio, DIA, [_tendencia()], prob)
 
     _, filas = leer_analitica_mas_reciente(limpio, DIA)

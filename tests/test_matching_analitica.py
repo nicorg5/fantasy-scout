@@ -21,7 +21,8 @@ def _tendencia(id_externo: str) -> TendenciaScrapeada:
 
 def _probabilidad(id_externo: str) -> ProbabilidadScrapeada:
     return ProbabilidadScrapeada(
-        slug=id_externo, probabilidad=ProbabilidadJugar(porcentaje=80), capturado_en=AHORA
+        id_futbolfantasy=id_externo, slug=id_externo,
+        probabilidad=ProbabilidadJugar(porcentaje=80), capturado_en=AHORA,
     )
 
 
@@ -75,31 +76,43 @@ def test_entrenador_no_cuenta_como_fallo_de_matching():
     assert "entrenadores" in bloque.motivo
 
 
-def test_cruce_de_slug_tolera_los_defectos_reales_de_futbolfantasy():
-    """Los slugs del sitio pierden la primera letra si va acentuada ('Álvaro Núñez' ->
-    'lvaro-nunez') y a veces llevan sufijo ('dani-lorenzo-1'). Casos reales."""
-    from fantasy.analytics.servicio import _cruzar_por_slug
-    from fantasy.matching.emparejador import CandidatoExterno, Emparejamiento
+def test_cruce_de_probabilidades_es_por_id_exacto():
+    """Desde 2026-09-02 el cruce entre la tabla de mercado y la página de equipo es por
+    id numérico de futbolfantasy, no por nombre: ambas páginas del sitio usan el MISMO
+    id (verificado con datos reales: `class="jugador_11830"` en la página de equipo es
+    el mismo 11830 que `data-id` en la tabla de mercado). Ya no hace falta tolerar
+    variantes de escritura para este cruce en absoluto.
+    """
+    from fantasy.analytics.servicio import _scrapear_probabilidades
 
-    emparejados = [
-        Emparejamiento("1", CandidatoExterno("A", "alvaro nuñez", "5"), 1.0),
-        Emparejamiento("2", CandidatoExterno("B", "dani lorenzo", "11"), 1.0),
-    ]
-    por_slug = {
-        "lvaro-nunez": _probabilidad("lvaro-nunez"),   # primera letra perdida
-        "dani-lorenzo-1": _probabilidad("dani-lorenzo-1"),  # sufijo de desambiguación
-    }
+    def cliente_falso(_cliente, slug):
+        return [_probabilidad("11830")] if slug == "real-madrid" else []
 
-    resultado = _cruzar_por_slug(emparejados, por_slug)
+    from unittest.mock import patch
 
-    assert set(resultado) == {"A", "B"}
+    with patch(
+        "fantasy.analytics.servicio.obtener_probabilidades_equipo", side_effect=cliente_falso
+    ):
+        por_id = _scrapear_probabilidades(cliente=None, slugs_equipo=["real-madrid"])
+
+    assert set(por_id) == {"11830"}
 
 
-def test_cruce_de_slug_no_empareja_a_un_jugador_distinto():
-    from fantasy.analytics.servicio import _cruzar_por_slug
-    from fantasy.matching.emparejador import CandidatoExterno, Emparejamiento
+def test_bug_real_de_cobertura_resuelto():
+    """Caso real que motivó el cambio (2026-09-02): con el widget antiguo
+    (`a.camiseta[data-probabilidad]`), Huijsen, Bellingham, Valverde y otros titulares
+    quedaban fuera (20/26 del equipo cubiertos). El widget del 'campo'
+    (`div.jugador_{id} > span.probabilidad-widget`) cubre la plantilla entera."""
+    from fantasy.scrapers.parsers import parsear_probabilidad_equipo
 
-    emparejados = [Emparejamiento("1", CandidatoExterno("A", "igor galdin", "10"), 1.0)]
-    por_slug = {"victor-garcia": _probabilidad("victor-garcia")}
+    html = (
+        '<div class="jugador_11830 tipo_campo campo camiseta-wrapper">'
+        '<a class="jugador my-auto" href="https://www.futbolfantasy.com/jugadores/dean-huijsen"></a>'
+        '<span class="probabilidad-widget"><span class="prob-3">80%</span></span>'
+        "</div>"
+    )
+    resultado = parsear_probabilidad_equipo(html)
 
-    assert _cruzar_por_slug(emparejados, por_slug) == {}
+    assert len(resultado) == 1
+    assert resultado[0].id_futbolfantasy == "11830"
+    assert resultado[0].probabilidad.porcentaje == 80

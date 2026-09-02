@@ -44,7 +44,7 @@ def _analitica_completa() -> Analitica:
             )
         },
         probabilidades={
-            "11230": ProbabilidadScrapeada("abel-bretones", ProbabilidadJugar(porcentaje=75), AHORA)
+            "11230": ProbabilidadScrapeada(id_futbolfantasy="11230", slug="abel-bretones", probabilidad=ProbabilidadJugar(porcentaje=75), capturado_en=AHORA)
         },
     )
 

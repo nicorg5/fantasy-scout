@@ -13,6 +13,7 @@ es la fuente de verdad y un cambio ahí es grave; el scraping es prescindible po
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -47,6 +48,11 @@ class TendenciaScrapeada:
 
 @dataclass(frozen=True)
 class ProbabilidadScrapeada:
+    # Id numérico de futbolfantasy: el MISMO que usa la tabla de mercado
+    # (`TendenciaScrapeada.id_futbolfantasy`), así que el cruce entre ambas páginas se
+    # hace por id exacto, sin comparar nombres. Verificado con datos reales (2026-09-02):
+    # confirma como fichero de identidad, no como aproximación.
+    id_futbolfantasy: str
     slug: str
     probabilidad: ProbabilidadJugar
     capturado_en: datetime
@@ -112,40 +118,71 @@ def parsear_tendencias_mercado(html: str) -> list[TendenciaScrapeada]:
 
 
 def parsear_probabilidad_equipo(html: str) -> list[ProbabilidadScrapeada]:
-    """Página `/laliga/equipos/{slug}`: cada jugador es un `<a class="camiseta">` con
-    `data-probabilidad="NN%"` y `href=".../jugadores/{slug-del-jugador}"`.
+    """Página `/laliga/equipos/{slug}`: el widget del "campo" (alineación probable
+    dibujada como campo de fútbol) envuelve a cada jugador en un
+    `<div class="jugador_{id} ...">`, con `{id}` el mismo id numérico de futbolfantasy
+    que usa la tabla de mercado. Dentro va `<span class="probabilidad-widget">NN%</span>`.
+
+    Se prefiere este widget al de `<a class="camiseta" data-probabilidad="NN%">` que se
+    usó antes: aquel solo cubre un subconjunto del equipo (20/26 en una comprobación
+    real) y deja fuera a titulares habituales. Verificado con datos reales
+    (2026-09-02): este cubre la plantilla entera (26/26) y con id exacto, sin falta de
+    comparar nombres — con lo que además desaparece la necesidad de tolerar variantes de
+    escritura para este cruce.
 
     Misma regla de degradación que el mercado.
     """
     ahora = datetime.now(timezone.utc)
     soup = BeautifulSoup(html, "html.parser")
-    enlaces = soup.select("a.camiseta[data-probabilidad][href*='/jugadores/']")
+    bloques = soup.select('div[class*="jugador_"]')
 
-    if not enlaces:
+    if not bloques:
         logger.warning("parsear_probabilidad_equipo: 0 jugadores encontrados; ¿cambió el sitio?")
         return []
 
     resultados = []
-    for enlace in enlaces:
+    vistos: set[str] = set()
+    for bloque in bloques:
+        clase_id = next(
+            (c for c in bloque.get("class", []) if re.fullmatch(r"jugador_\d+", c)), None
+        )
+        if clase_id is None:
+            continue
+        id_futbolfantasy = clase_id.split("_", 1)[1]
+        if id_futbolfantasy in vistos:
+            continue  # el mismo jugador puede aparecer en más de un bloque de la página
+
+        span = bloque.select_one("span.probabilidad-widget")
+        if span is None:
+            continue
+        texto = span.get_text(strip=True)
+        if not texto:
+            continue
+
         try:
-            # El slug es el PRIMER segmento tras /jugadores/: a veces sigue un sufijo de
-            # temporada (".../jugadores/dani-sanchez/laliga-26-27", visto en datos reales).
-            resto = enlace["href"].split("/jugadores/", 1)[1]
+            porcentaje = int(float(texto.rstrip("%")))
+        except ValueError as exc:
+            logger.warning("probabilidad con formato inesperado '%s', se salta: %s", texto, exc)
+            continue
+
+        # El slug es best-effort (para trazabilidad); el cruce real usa el id numérico.
+        enlace_real = bloque.find("a", href=lambda h: h and h != "#" and "/jugadores/" in h)
+        slug = ""
+        if enlace_real is not None:
+            resto = enlace_real["href"].split("/jugadores/", 1)[1]
             slug = resto.split("/", 1)[0]
-            crudo = enlace["data-probabilidad"].rstrip("%")
-            porcentaje = int(float(crudo))
-            probabilidad = ProbabilidadScrapeada(
+
+        vistos.add(id_futbolfantasy)
+        resultados.append(
+            ProbabilidadScrapeada(
+                id_futbolfantasy=id_futbolfantasy,
                 slug=slug,
                 probabilidad=ProbabilidadJugar(porcentaje=porcentaje),
                 capturado_en=ahora,
             )
-        except (KeyError, ValueError, IndexError) as exc:
-            logger.warning("jugador de plantilla con atributos inesperados, se salta: %s", exc)
-            continue
-
-        resultados.append(probabilidad)
+        )
 
     logger.info(
-        "parsear_probabilidad_equipo: %d/%d jugadores parseados", len(resultados), len(enlaces)
+        "parsear_probabilidad_equipo: %d/%d bloques parseados", len(resultados), len(bloques)
     )
     return resultados
