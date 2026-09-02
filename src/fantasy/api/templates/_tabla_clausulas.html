@@ -1,0 +1,52 @@
+{# Mismo marcado unico que el resto: tabla en ancho, cards apiladas en movil. #}
+{% import "macros.html" as ui %}
+
+<table class="jugadores" id="tabla-clausulas">
+  <thead>
+    <tr>
+      <th scope="col">Jugador</th>
+      <th scope="col">Manager</th>
+      <th scope="col">Cláusula</th>
+      <th scope="col">Sobrepago</th>
+      <th scope="col">Valor de mercado</th>
+      <th scope="col">Tendencia de valor</th>
+      <th scope="col">Media 7 días</th>
+      <th scope="col">Probabilidad de jugar</th>
+      <th scope="col">Disponible</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for f in clausulas %}
+    <tr class="{{ 'fichable' if f.fichable else 'bloqueada' }}">
+      <td data-etiqueta="Jugador">
+        <strong>{{ f.nombre }}</strong>
+        <span class="meta">{{ f.equipo }} · {{ f.posicion }}</span>
+      </td>
+      <td data-etiqueta="Manager">{{ f.manager }}</td>
+      <td data-etiqueta="Cláusula">
+        <span class="valor">{{ f.clausula_euros | euros }}</span>
+        {{ ui.etiqueta_origen(f.origen_valor) }}
+      </td>
+      <td data-etiqueta="Sobrepago">
+        <span class="tendencia tendencia--baja">+{{ f.sobrepago_euros | euros }}</span>
+        {% if f.sobrepago_pct is not none %}
+        <span class="meta">+{{ "%.0f"|format(f.sobrepago_pct) }}% sobre el valor</span>
+        {% endif %}
+      </td>
+      <td data-etiqueta="Valor de mercado">
+        <span class="valor">{{ f.valor_mercado_euros | euros }}</span>
+      </td>
+      <td data-etiqueta="Tendencia de valor">{{ ui.celda_tendencia(f.analitica) }}</td>
+      <td data-etiqueta="Media 7 días">{{ ui.celda_media_semanal(f.analitica) }}</td>
+      <td data-etiqueta="Probabilidad de jugar">{{ ui.celda_probabilidad(f.analitica) }}</td>
+      <td data-etiqueta="Disponible">
+        {% if f.fichable %}
+        <span class="estado-fichable">disponible</span>
+        {% else %}
+        <span class="estado-bloqueada">{{ f.espera_legible }}</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>

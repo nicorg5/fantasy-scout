@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from fantasy.analytics.presentacion import formatear_euros
+from fantasy.analytics.clausulas import FiltrosClausulas, obtener_clausulas
 from fantasy.analytics.servicio import (
     fecha_de_la_analitica,
     obtener_mercado,
@@ -117,6 +118,55 @@ def _fragmento_tabla(request, titulo: str, cargar):
     return TEMPLATES.TemplateResponse(
         request=request, name="_tabla_jugadores.html", context={"jugadores": jugadores}
     )
+
+
+@app.get("/clausulas")
+def clausulas(
+    request: Request,
+    manager: str | None = None,
+    posicion: str | None = None,
+    equipo: str | None = None,
+    orden: str | None = None,
+    estado: str | None = None,
+    usuario: Usuario = Depends(usuario_actual),
+    sesion: Session = Depends(obtener_sesion),
+):
+    """Clausulazos de la liga.
+
+    Mas lenta que el resto (~5 s): lee las plantillas de los 9 managers rivales en vivo.
+    No se cachea a proposito: una clausula desactualizada llevaria a intentar un fichaje
+    imposible.
+    """
+    filtros = FiltrosClausulas.desde_query(manager, posicion, equipo, orden, estado)
+    contexto = {
+        "titulo": "Clausulazos",
+        "filtros": filtros,
+        "filtros_activos": any(
+            (filtros.manager, filtros.posicion, filtros.equipo, filtros.estado)
+        ),
+        "opciones": {"managers": [], "posiciones": [], "equipos": []},
+        "clausulas": [],
+        "analitica_de": None,
+    }
+
+    try:
+        filas, opciones = obtener_clausulas(sesion, usuario.id, filtros)
+    except TokenInvalido:
+        contexto["aviso_token"] = (
+            "Tu token de LaLiga ha caducado o no es válido. Vuelve a pegarlo para ver tus datos."
+        )
+        return TEMPLATES.TemplateResponse(request=request, name="clausulas.html", context=contexto)
+    except ErrorAPIOficial as exc:
+        logger.warning("fallo de la API oficial en clausulas: %s", exc)
+        contexto["aviso_error"] = (
+            "No se ha podido contactar con LaLiga Fantasy ahora mismo. Vuelve a intentarlo en un rato."
+        )
+        return TEMPLATES.TemplateResponse(request=request, name="clausulas.html", context=contexto)
+
+    contexto["clausulas"] = filas
+    contexto["opciones"] = opciones
+    contexto["analitica_de"] = fecha_de_la_analitica(sesion)
+    return TEMPLATES.TemplateResponse(request=request, name="clausulas.html", context=contexto)
 
 
 @app.get("/plantilla/tabla")

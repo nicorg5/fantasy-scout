@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block contenido %}
+<h1>Clausulazos</h1>
+<p>Jugadores de los demás managers y lo que costaría clausularlos. Los
+<strong>disponibles</strong> salen primero; el resto, por orden de desbloqueo.</p>
+
+{% include "_avisos.html" %}
+
+{% if clausulas or filtros_activos %}
+{# Formulario GET normal: los filtros viajan en la URL, asi se pueden compartir y
+   recargar sin perderlos. Sin JS propio. #}
+<form method="get" action="/clausulas" class="filtros">
+  <select name="manager" aria-label="Manager">
+    <option value="">Todos los managers</option>
+    {% for m in opciones.managers %}
+    <option value="{{ m }}" {% if filtros.manager == m %}selected{% endif %}>{{ m }}</option>
+    {% endfor %}
+  </select>
+
+  <select name="posicion" aria-label="Posición">
+    <option value="">Todas las posiciones</option>
+    {% for p in opciones.posiciones %}
+    <option value="{{ p }}" {% if filtros.posicion == p %}selected{% endif %}>{{ p }}</option>
+    {% endfor %}
+  </select>
+
+  <select name="equipo" aria-label="Equipo">
+    <option value="">Todos los equipos</option>
+    {% for e in opciones.equipos %}
+    <option value="{{ e }}" {% if filtros.equipo == e %}selected{% endif %}>{{ e }}</option>
+    {% endfor %}
+  </select>
+
+  <select name="estado" aria-label="Estado de la cláusula">
+    <option value="">Disponibles y bloqueados</option>
+    <option value="disponibles" {% if filtros.estado == 'disponibles' %}selected{% endif %}>Solo disponibles</option>
+    <option value="bloqueados" {% if filtros.estado == 'bloqueados' %}selected{% endif %}>Solo bloqueados</option>
+  </select>
+
+  <select name="orden" aria-label="Ordenar por">
+    <option value="desbloqueo" {% if filtros.orden == 'desbloqueo' %}selected{% endif %}>Por desbloqueo</option>
+    <option value="clausula_asc" {% if filtros.orden == 'clausula_asc' %}selected{% endif %}>Cláusula: barata primero</option>
+    <option value="clausula_desc" {% if filtros.orden == 'clausula_desc' %}selected{% endif %}>Cláusula: cara primero</option>
+    <option value="sobrepago_asc" {% if filtros.orden == 'sobrepago_asc' %}selected{% endif %}>Sobrepago: menor primero</option>
+    <option value="sobrepago_desc" {% if filtros.orden == 'sobrepago_desc' %}selected{% endif %}>Sobrepago: mayor primero</option>
+  </select>
+
+  <button type="submit">Aplicar</button>
+  {% if filtros_activos %}<a href="/clausulas" role="button" class="secondary">Quitar filtros</a>{% endif %}
+</form>
+
+{% if analitica_de %}
+<p class="meta">Analítica de futbolfantasy.com capturada el {{ analitica_de.strftime("%d/%m/%Y") }}.
+Cláusulas y valores, en vivo de LaLiga Fantasy.</p>
+{% endif %}
+
+{% if clausulas %}
+<p class="meta">{{ clausulas | length }} jugadores · {{ clausulas | selectattr("fichable") | list | length }} disponibles ahora mismo.</p>
+{% include "_tabla_clausulas.html" %}
+{% else %}
+<p role="alert">Ningún jugador coincide con esos filtros.</p>
+{% endif %}
+{% endif %}
+{% endblock %}
