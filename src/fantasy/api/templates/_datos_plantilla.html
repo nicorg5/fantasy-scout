@@ -1,0 +1,7 @@
+{# Bloque que htmx sustituye entero: variacion + tabla.
+   Si solo se sustituyera la tabla, la variacion quedaria desactualizada; si el fragmento
+   incluyera la variacion sin este contenedor, apareceria duplicada. #}
+<div id="datos-jugadores">
+  {% include "_variacion.html" %}
+  {% include "_tabla_jugadores.html" %}
+</div>

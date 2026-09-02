@@ -95,3 +95,74 @@ def test_probabilidad_fuera_de_rango():
 def test_formatear_euros():
     assert formatear_euros(1_234_567) == "1.234.567 €"
     assert formatear_euros(-68_000) == "-68.000 €"
+
+
+# --- variación total de la plantilla ---
+
+def _presentado(direccion: str, euros: int, con_analitica: bool = True):
+    from datetime import datetime, timezone
+
+    from fantasy.analytics.presentacion import (
+        BloqueAnalitico, JugadorPresentado, TendenciaValor,
+    )
+
+    if con_analitica:
+        bloque = BloqueAnalitico.desde_scraping(
+            tendencia_valor=TendenciaValor(direccion=direccion, variacion_euros=euros),
+            origen="futbolfantasy.com",
+            capturado_en=datetime.now(timezone.utc),
+            motivo_probabilidad="sin dato",
+        )
+    else:
+        bloque = BloqueAnalitico.no_disponible("sin datos")
+
+    return JugadorPresentado(
+        id_oficial="x", nombre="X", equipo="Málaga", posicion="Defensa",
+        valor_mercado_euros=1_000_000, analitica=bloque,
+    )
+
+
+def test_variacion_aplica_el_signo_de_cada_tendencia():
+    """`variacion_euros` es siempre positivo; el signo vive en `direccion`. Sumar sin
+    aplicarlo daría un total que solo sube."""
+    from fantasy.analytics.presentacion import calcular_variacion
+
+    v = calcular_variacion([
+        _presentado("sube", 100_000),
+        _presentado("baja", 30_000),
+        _presentado("estable", 0),
+    ])
+
+    assert v.euros == 70_000
+    assert v.direccion == "sube"
+
+
+def test_variacion_negativa_se_marca_como_bajada():
+    from fantasy.analytics.presentacion import calcular_variacion
+
+    v = calcular_variacion([_presentado("baja", 50_000), _presentado("sube", 10_000)])
+
+    assert v.euros == -40_000
+    assert v.direccion == "baja"
+    assert v.simbolo == "▼"
+
+
+def test_sin_ningun_dato_no_se_inventa_un_cero():
+    """Mostrar '0 €' sería mentir: no es que no haya variado, es que no lo sabemos."""
+    from fantasy.analytics.presentacion import calcular_variacion
+
+    assert calcular_variacion([_presentado("sube", 0, con_analitica=False)]) is None
+    assert calcular_variacion([]) is None
+
+
+def test_variacion_parcial_se_marca_como_incompleta():
+    from fantasy.analytics.presentacion import calcular_variacion
+
+    v = calcular_variacion([
+        _presentado("sube", 100_000),
+        _presentado("sube", 0, con_analitica=False),
+    ])
+
+    assert v.jugadores_con_dato == 1
+    assert v.jugadores_totales == 2
+    assert v.completa is False

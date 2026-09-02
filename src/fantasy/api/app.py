@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from fantasy.analytics.presentacion import formatear_euros
+from fantasy.analytics.presentacion import calcular_variacion, formatear_euros
 from fantasy.analytics.clausulas import FiltrosClausulas, obtener_clausulas
 from fantasy.analytics.servicio import (
     fecha_de_la_analitica,
@@ -89,11 +89,13 @@ def _pagina_de_jugadores(request, plantilla_html: str, titulo: str, cargar, sesi
             "titulo": titulo,
             "jugadores": jugadores,
             "analitica_de": fecha_de_la_analitica(sesion),
+            # Solo tiene sentido en la plantilla propia: el mercado no es "tu" equipo.
+            "variacion": calcular_variacion(jugadores) if plantilla_html == "plantilla.html" else None,
         },
     )
 
 
-def _fragmento_tabla(request, titulo: str, cargar):
+def _fragmento_tabla(request, titulo: str, cargar, con_variacion: bool = False):
     """Devuelve SOLO la tabla, no la página entera: es lo que hace útil a htmx (R38).
 
     Un fallo aquí no puede devolver la página completa dentro del hueco de la tabla, así
@@ -115,8 +117,16 @@ def _fragmento_tabla(request, titulo: str, cargar):
             context={"mensaje": "No se ha podido contactar con LaLiga Fantasy."},
         )
 
+    # /plantilla devuelve variacion + tabla en un contenedor comun, para que el swap de
+    # htmx sustituya el bloque entero y el total no quede desfasado ni duplicado.
+    # /mercado solo devuelve la tabla: ahi la variacion no significa nada.
     return TEMPLATES.TemplateResponse(
-        request=request, name="_tabla_jugadores.html", context={"jugadores": jugadores}
+        request=request,
+        name="_datos_plantilla.html" if con_variacion else "_tabla_jugadores.html",
+        context={
+            "jugadores": jugadores,
+            "variacion": calcular_variacion(jugadores) if con_variacion else None,
+        },
     )
 
 
@@ -175,7 +185,10 @@ def plantilla_tabla(
     usuario: Usuario = Depends(usuario_actual),
     sesion: Session = Depends(obtener_sesion),
 ):
-    return _fragmento_tabla(request, "Mi plantilla", lambda: obtener_plantilla(sesion, usuario.id))
+    return _fragmento_tabla(
+        request, "Mi plantilla", lambda: obtener_plantilla(sesion, usuario.id),
+        con_variacion=True,
+    )
 
 
 @app.get("/mercado/tabla")

@@ -152,3 +152,43 @@ def test_las_paginas_cargan_htmx_sin_build_step(cliente_autenticado):
 
     assert "htmx.org" in html
     assert 'hx-get="/plantilla/tabla"' in html
+
+
+# --- variación total de la plantilla ---
+
+def test_la_plantilla_muestra_la_variacion_total(cliente_autenticado):
+    with patch("fantasy.api.app.obtener_plantilla", return_value=[_jugador()]):
+        html = cliente_autenticado.get("/plantilla").text
+
+    assert "variacion-total" in html
+    assert "en las últimas 24 h" in html
+
+
+def test_el_mercado_no_muestra_variacion(cliente_autenticado):
+    """Es la variación de TU plantilla: en el mercado no significa nada."""
+    with patch("fantasy.api.app.obtener_mercado", return_value=[_jugador()]):
+        html = cliente_autenticado.get("/mercado").text
+
+    assert "variacion-total" not in html
+
+
+def test_el_fragmento_htmx_de_plantilla_trae_variacion_y_tabla_juntas(cliente_autenticado):
+    """Van en un contenedor comun: si el swap sustituyera solo la tabla, el total
+    quedaria desfasado; si la variacion fuera suelta, apareceria duplicada."""
+    with patch("fantasy.api.app.obtener_plantilla", return_value=[_jugador()]):
+        html = cliente_autenticado.get("/plantilla/tabla").text
+
+    assert 'id="datos-jugadores"' in html
+    assert "variacion-total" in html
+    assert "<table" in html
+    # Se cuenta el texto del bloque, no la clase: "variacion-total" aparece dos veces
+    # dentro del mismo class (base + modificador) y daria un falso positivo.
+    assert html.count("en las últimas 24 h") == 1, "no puede venir duplicada"
+
+
+def test_el_fragmento_htmx_de_mercado_sigue_siendo_solo_la_tabla(cliente_autenticado):
+    with patch("fantasy.api.app.obtener_mercado", return_value=[_jugador()]):
+        html = cliente_autenticado.get("/mercado/tabla").text
+
+    assert "variacion-total" not in html
+    assert "<table" in html

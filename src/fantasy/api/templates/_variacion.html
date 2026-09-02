@@ -1,0 +1,16 @@
+{# Variacion de valor de la plantilla en 24h.
+   Es la SUMA de la columna "Tendencia de valor" de la tabla de abajo, asi que cuadra con
+   lo que se ve. Por eso sale de futbolfantasy: la API oficial no publica variacion. #}
+{% if variacion %}
+<p class="variacion-total variacion-total--{{ variacion.direccion }}">
+  {{ variacion.simbolo }}
+  {% if variacion.euros >= 0 %}+{% else %}−{% endif %}{{ variacion.euros | abs | euros }}
+  <span class="meta">en las últimas 24 h</span>
+  <span class="origen">fuente: {{ variacion.origen }}</span>
+  {% if not variacion.completa %}
+  {# Una suma incompleta presentada como total seria enganosa. #}
+  <span class="badge-no-disponible"
+        title="{{ variacion.jugadores_totales - variacion.jugadores_con_dato }} jugadores sin dato">parcial</span>
+  {% endif %}
+</p>
+{% endif %}

@@ -184,3 +184,18 @@ tr.bloqueada { opacity: .72; }
   .filtros { flex-direction: column; align-items: stretch; }
   .filtros select, .filtros button, .filtros a[role="button"] { width: 100%; flex: none; }
 }
+
+/* --- Variación total de la plantilla --- */
+.variacion-total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: .5rem;
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 0 0 1rem;
+}
+.variacion-total--sube    { color: var(--pico-ins-color, #2a7); }
+.variacion-total--baja    { color: var(--pico-del-color, #c33); }
+.variacion-total--estable { color: var(--pico-muted-color); }
+.variacion-total .meta, .variacion-total .origen { font-weight: 400; font-size: .8rem; }

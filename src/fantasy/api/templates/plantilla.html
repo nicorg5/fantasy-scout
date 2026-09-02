@@ -12,12 +12,12 @@
 <div class="barra-acciones">
   {# htmx sustituye SOLO este bloque, no la página entera: en móvil se nota. #}
   <button hx-get="/plantilla/tabla"
-          hx-target="#tabla-jugadores"
+          hx-target="#datos-jugadores"
           hx-swap="outerHTML"
           hx-indicator="#cargando"
           class="secondary">Actualizar datos</button>
   <span id="cargando" class="htmx-indicator">actualizando…</span>
 </div>
-{% include "_tabla_jugadores.html" %}
+{% include "_datos_plantilla.html" %}
 {% endif %}
 {% endblock %}

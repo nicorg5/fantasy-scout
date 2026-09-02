@@ -166,6 +166,70 @@ class JugadorPresentado:
     origen_valor: str = ORIGEN_OFICIAL
 
 
+SIGNO_TENDENCIA = {"sube": 1, "baja": -1, "estable": 0}
+
+
+@dataclass(frozen=True)
+class VariacionPlantilla:
+    """Cuanto ha subido o bajado la plantilla en las ultimas 24h.
+
+    Es la SUMA de la tendencia de cada jugador, asi que cuadra con la columna
+    "Tendencia de valor" de la tabla de abajo: el total es literalmente lo que se ve
+    sumado. Por eso sale de futbolfantasy y no de la API oficial, que no publica
+    variacion de valor (solo el valor actual).
+    """
+
+    euros: int
+    jugadores_con_dato: int
+    jugadores_totales: int
+    origen: str
+
+    @property
+    def direccion(self) -> str:
+        if self.euros > 0:
+            return "sube"
+        if self.euros < 0:
+            return "baja"
+        return "estable"
+
+    @property
+    def simbolo(self) -> str:
+        return {"sube": "▲", "baja": "▼", "estable": "="}[self.direccion]
+
+    @property
+    def completa(self) -> bool:
+        """Si falta algun jugador, el total va acompanado de un aviso: una suma
+        incompleta presentada como total seria enganosa."""
+        return self.jugadores_con_dato == self.jugadores_totales
+
+
+def calcular_variacion(jugadores: list[JugadorPresentado]) -> VariacionPlantilla | None:
+    """Suma la variacion de 24h de una lista de jugadores.
+
+    Devuelve None si NINGUNO tiene dato: mostrar "0 €" en ese caso seria mentir, porque
+    no es que no haya variado, es que no lo sabemos.
+    """
+    con_dato = [
+        j for j in jugadores
+        if j.analitica.disponible and j.analitica.tendencia_valor is not None
+    ]
+    if not con_dato:
+        return None
+
+    total = sum(
+        SIGNO_TENDENCIA[j.analitica.tendencia_valor.direccion]
+        * j.analitica.tendencia_valor.variacion_euros
+        for j in con_dato
+    )
+    return VariacionPlantilla(
+        euros=total,
+        jugadores_con_dato=len(con_dato),
+        jugadores_totales=len(jugadores),
+        # El origen es el de la analitica, no el oficial: es un dato scrapeado.
+        origen=con_dato[0].analitica.origen or "futbolfantasy.com",
+    )
+
+
 def formatear_euros(cantidad: int) -> str:
     """1234567 -> '1.234.567 €' (separador de miles español)."""
     return f"{cantidad:,}".replace(",", ".") + " €"
