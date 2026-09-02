@@ -140,6 +140,51 @@ idempotente por día.
 Ningún secreto vive en el repo: en `render.yaml` van declarados con `sync: false` y sus
 valores se cargan en el dashboard de Render y en los secrets de GitHub.
 
+## Cómo desplegar
+
+Se trabaja en `feature/v0.1.0`; `main` despliega a producción automáticamente, así que
+solo recibe lo ya verificado.
+
+**1. Comprobaciones automáticas**
+
+```bash
+bash scripts/pre_deploy.sh
+```
+
+Verifica rama, cambios sin commitear, tests en verde, migraciones pendientes en la base de
+producción y que no haya secretos versionados.
+
+**2. Ensayo contra la base de datos real** — el paso que más problemas evita:
+
+```bash
+uv run --env-file .env.produccion uvicorn fantasy.api.app:app --port 8010
+```
+
+Es la app local hablando con la base de producción. Detecta casi todo lo que fallaría en el
+servidor (datos que en local no existen, migraciones a medias) sin desplegar nada.
+
+**3. Si hay migraciones nuevas, aplícalas ANTES del merge**
+
+```bash
+uv run --env-file .env.produccion alembic upgrade head
+```
+
+El orden importa: si el código llega al servidor antes que la tabla, la web falla en
+producción.
+
+**4. Merge y despliegue**
+
+```bash
+git checkout main && git merge feature/v0.1.0 && git push
+git checkout feature/v0.1.0
+```
+
+Render despliega solo. Si algo sale mal, en su panel de *Deploys* se puede volver al
+anterior con un clic.
+
+Los tests se ejecutan además automáticamente en cada push (GitHub Actions). No bloquean el
+merge: con un único desarrollador basta con ver el resultado antes de mergear.
+
 ## Scripts
 
 | Script | Para qué |
@@ -150,6 +195,7 @@ valores se cargan en el dashboard de Render y en los secrets de GitHub.
 | `construir_mapa_equipos.py` | Regenera el puente de IDs de equipo entre fuentes |
 | `construir_mapeo.py` | Empareja jugadores y reporta los no emparejados |
 | `snapshot_diario.py` | El job del cron |
+| `pre_deploy.sh` | Comprobaciones antes de desplegar |
 
 ## Sobre el scraping
 

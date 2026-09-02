@@ -1,0 +1,69 @@
+# Tests automáticos en cada push y pull request.
+#
+# Existe para que un merge a `main` no pueda desplegar código roto sin que nadie se entere:
+# Render despliega automáticamente desde `main`, así que un fallo llega a producción.
+#
+# NO bloquea el merge a propósito (decisión de 2026-08-28): con un único committer, ver el
+# rojo antes de mergear basta, y bloquear obligaría a trabajar por Pull Requests. Si algún
+# día entra otra persona al repo, conviene reconsiderarlo.
+#
+# Este workflow NO usa secretos de producción: levanta su propio Postgres efímero y genera
+# claves de usar y tirar. Los tests crean y borran datos, así que jamás deben apuntar a Neon.
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  # Si haces varios push seguidos, solo interesa el resultado del último.
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: fantasy
+          POSTGRES_PASSWORD: fantasy
+          POSTGRES_DB: fantasy_scout
+        ports:
+          - 5433:5432
+        # Sin esto, los tests arrancarían antes de que la base acepte conexiones.
+        options: >-
+          --health-cmd "pg_isready -U fantasy -d fantasy_scout"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Instalar dependencias
+        run: uv sync --frozen --all-groups
+
+      - name: Preparar el esquema
+        env:
+          DATABASE_URL: postgresql+psycopg://fantasy:fantasy@localhost:5433/fantasy_scout
+        run: uv run alembic upgrade head
+
+      - name: Ejecutar los tests
+        env:
+          DATABASE_URL: postgresql+psycopg://fantasy:fantasy@localhost:5433/fantasy_scout
+          # Clave de usar y tirar: los tests solo comprueban que el ciclo cifrar/descifrar
+          # funciona, no necesitan la real. Fernet exige 32 bytes en base64 url-safe.
+          TOKEN_ENCRYPTION_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=
+          SESSION_SECRET: secreto-solo-para-ci
+          FANTASY_ENTORNO: local
+          FANTASY_CONTACTO: mailto:ci@example.invalid
+        run: uv run pytest -q
