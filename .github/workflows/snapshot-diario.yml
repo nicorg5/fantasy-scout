@@ -3,18 +3,37 @@
 # Vive en GitHub Actions y no en Render porque el plan gratuito de Render no incluye
 # cron jobs. Ver design.md §Estrategia de deploy.
 #
-# DOBLE DISPARO deliberado: el cron de GitHub se define en UTC y Madrid alterna CET/CEST,
-# así que una sola hora se desfasaría media temporada. Con dos, al menos uno cae después
-# de las 18:00 de Madrid en ambas estaciones:
-#   16:30 UTC -> 18:30 CEST (verano, escribe) / 17:30 CET (invierno, NO escribe)
-#   17:30 UTC -> 19:30 CEST (verano, ya existe) / 18:30 CET (invierno, escribe)
+# CUATRO DISPAROS, por dos motivos distintos:
 #
-# El disparo que cae antes de las 18:00 no hace daño: el script tiene una guardia horaria
-# que le impide escribir con el mercado abierto, y es idempotente por fecha.
+# 1. MADRUGADA (tras el cambio de valor de las 00:00 en LaLiga Fantasy). Es cuando
+#    futbolfantasy recalcula tendencias, así que es el momento de refrescar la analítica.
+#    Sin esto, por la mañana se veía el valor nuevo junto a una tendencia del día anterior.
+#      23:30 UTC -> 01:30 CEST (verano) / 00:30 CET (invierno)
+#      01:00 UTC -> 03:00 CEST (verano) / 02:00 CET (invierno)
+#
+# 2. TARDE (tras el cierre de mercado de las 18:00). Es cuando se guarda el snapshot.
+#      16:30 UTC -> 18:30 CEST (verano, guarda) / 17:30 CET (invierno, aún no)
+#      17:30 UTC -> 19:30 CEST (verano, ya existe) / 18:30 CET (invierno, guarda)
+#
+# El doble disparo de cada bloque cubre el cambio CET/CEST: el cron se define en UTC y
+# España cambia de hora dos veces al año, así que una sola hora se desfasaría media
+# temporada.
+#
+# Ningún disparo de más hace daño: la analítica se guarda con upsert (refrescarla varias
+# veces solo mejora la frescura) y el snapshot de mercado tiene guardia horaria y no se
+# recaptura si ya existe.
+#
+# AVISO: GitHub Actions retrasa los crons cuando hay carga; se han observado retrasos de
+# hasta 2 horas. Por eso el script decide qué hacer mirando la hora REAL de Madrid, no
+# confiando en la hora programada.
 name: Snapshot diario del mercado
 
 on:
   schedule:
+    # Madrugada: refresca la analítica con los valores nuevos.
+    - cron: "30 23 * * *"
+    - cron: "0 1 * * *"
+    # Tarde: guarda el snapshot del mercado tras el cierre.
     - cron: "30 16 * * *"
     - cron: "30 17 * * *"
   workflow_dispatch:          # permite lanzarlo a mano desde la pestaña Actions

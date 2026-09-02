@@ -41,7 +41,6 @@ from fantasy.config import obtener_config
 from fantasy.storage.engine import obtener_fabrica_sesiones
 from fantasy.storage.fechas import ahora_en_madrid, fecha_local, mercado_ya_cerro
 from fantasy.storage.modelos import (
-    AnaliticaDiaria,
     CredencialesLaLiga,
     EstadoAnalitica,
     Jugador,
@@ -57,25 +56,18 @@ logger = logging.getLogger("snapshot_diario")
 
 
 def _ya_hay_snapshot(sesion: Session, dia: date) -> bool:
-    """El trabajo del dia esta hecho solo si estan LAS DOS COSAS.
+    """Si ya existe el snapshot de mercado de ese dia.
 
-    Mirar unicamente `market_snapshot` no basta: si el snapshot existe pero falta la
-    analitica, la web se queda sin datos hasta el dia siguiente. Paso de verdad en local
-    y habria pasado igual en produccion.
+    Solo cubre `market_snapshot`, no la analitica: son dos cosas con ritmos distintos.
+    El mercado cambia una vez al dia (18:00) y no tiene sentido recapturarlo; la
+    analitica de futbolfantasy se renueva tras el cambio de valor (00:00) y SI conviene
+    refrescarla varias veces al dia.
     """
-    hay_snapshot = bool(
+    return bool(
         sesion.scalar(
             select(func.count()).select_from(SnapshotMercado).where(SnapshotMercado.fecha == dia)
         )
     )
-    hay_analitica = bool(
-        sesion.scalar(
-            select(func.count()).select_from(AnaliticaDiaria).where(AnaliticaDiaria.fecha == dia)
-        )
-    )
-    if hay_snapshot and not hay_analitica:
-        logger.info("hay snapshot de %s pero falta la analitica: se regenera", dia)
-    return hay_snapshot and hay_analitica
 
 
 def _usuarios_con_credenciales(sesion: Session, email: str | None) -> list[Usuario]:
@@ -134,78 +126,93 @@ def _guardar(sesion: Session, dia: date, subastas, presentados) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--forzar-hora", action="store_true", help="Ignora la guardia de las 18:00")
+    parser.add_argument(
+        "--forzar-hora", action="store_true",
+        help="Ignora la guardia de las 18:00 para el snapshot de mercado",
+    )
     parser.add_argument("--usuario", default=None, help="Limita a un usuario concreto")
     args = parser.parse_args()
 
     ahora = ahora_en_madrid()
     dia = fecha_local(ahora)
-    logger.info("snapshot para %s (hora de Madrid: %s)", dia, ahora.strftime("%H:%M %Z"))
-
-    # Guardia 1: hora. Un disparo temprano no debe capturar el mercado abierto.
-    if not args.forzar_hora and not mercado_ya_cerro(ahora):
-        logger.info("el mercado aún no ha cerrado (18:00 Madrid); no se escribe nada")
-        return
+    logger.info("ejecucion para %s (hora de Madrid: %s)", dia, ahora.strftime("%H:%M %Z"))
 
     fabrica = obtener_fabrica_sesiones()
     with fabrica() as sesion:
-        # Guardia 2: idempotencia. Los dos disparos del cron son deliberados.
-        if _ya_hay_snapshot(sesion, dia):
-            logger.info("ya existe snapshot de %s; nada que hacer", dia)
-            return
-
         usuarios = _usuarios_con_credenciales(sesion, args.usuario)
         if not usuarios:
             logger.warning(
-                "ningún usuario con credenciales guardadas: el cron no puede autenticarse solo"
+                "ningun usuario con credenciales guardadas: el cron no puede autenticarse solo"
             )
             return
 
-        # El mercado es el mismo para toda la liga, así que basta un usuario que funcione.
-        for usuario in usuarios:
-            try:
-                cliente = ClienteOficial(sesion, usuario.id)
-                league_id, _ = cliente.obtener_liga_y_equipo()
-                subastas = cliente.obtener_mercado(league_id)
-            except ErrorAPIOficial as exc:
-                logger.warning("no se pudo leer el mercado con un usuario: %s", exc)
-                continue
-
-            oficiales = [s.jugador for s in subastas]
-
-            # Se scrapea TODO el sitio (~669 jugadores), no solo los del mercado: la web
-            # necesitara despues analitica de los jugadores de cada plantilla, que no
-            # estan en subasta. Guardarlo aqui es lo que permite que la web no scrapee.
-            tendencias, probabilidades = scrapear_todo_para_guardar()
+        # --- 1. ANALITICA: se actualiza SIEMPRE ---
+        #
+        # Es lo unico que consultan las pantallas, y se renueva tras el cambio de valor
+        # de las 00:00. Por eso no lleva guardia horaria ni de idempotencia: el guardado
+        # es un upsert, asi que ejecutarlo varias veces al dia solo mejora la frescura.
+        tendencias, probabilidades = scrapear_todo_para_guardar()
+        if tendencias:
             guardados = guardar_analitica_del_dia(sesion, dia, tendencias, probabilidades)
-            logger.info("analitica diaria guardada: %d jugadores", guardados)
+            logger.info("analitica diaria actualizada: %d jugadores", guardados)
+        else:
+            logger.warning("scraping caido: la analitica de hoy se queda como estaba")
 
-            # Se compone leyendo de la BD, igual que hara la web: si esto sale bien, la
-            # web tambien funcionara.
-            analitica = recolectar_analitica_de_bd(sesion, oficiales)
-            presentados = componer(oficiales, analitica)
-
-            escritos = _guardar(sesion, dia, subastas, presentados)
-            con_analitica = sum(1 for p in presentados if p.analitica.disponible)
+        # --- 2. SNAPSHOT DE MERCADO: una vez al dia, tras el cierre ---
+        #
+        # Historico del mercado. A diferencia de la analitica, no tiene sentido
+        # recapturarlo: el mercado no cambia hasta el cierre siguiente.
+        if _ya_hay_snapshot(sesion, dia):
+            logger.info("ya existe snapshot de mercado de %s; solo se actualizo la analitica", dia)
+        elif not args.forzar_hora and not mercado_ya_cerro(ahora):
             logger.info(
-                "snapshot guardado: %d jugadores, %d con analítica, %d sin",
-                escritos, con_analitica, escritos - con_analitica,
+                "el mercado aun no ha cerrado (18:00 Madrid): no se guarda snapshot, "
+                "pero la analitica si se ha actualizado"
             )
-            logger.info("matching: %d jugadores sin emparejar", analitica.sin_emparejar)
+        else:
+            _guardar_snapshot_de_mercado(sesion, usuarios, dia)
 
-            borrados = purgar_snapshots_antiguos(sesion)
-            borrados_analitica = purgar_analitica_antigua(
-                sesion, dia, obtener_config().retencion_dias
+        # --- 3. Purga de retencion ---
+        borrados = purgar_snapshots_antiguos(sesion)
+        borrados_analitica = purgar_analitica_antigua(
+            sesion, dia, obtener_config().retencion_dias
+        )
+        if borrados or borrados_analitica:
+            logger.info(
+                "purga de retencion: %d snapshots y %d filas de analitica",
+                borrados, borrados_analitica,
             )
-            if borrados or borrados_analitica:
-                logger.info(
-                    "purga de retención: %d snapshots y %d filas de analítica",
-                    borrados, borrados_analitica,
-                )
-            return
 
-        logger.error("ningún usuario pudo leer el mercado; no se ha guardado nada")
-        raise SystemExit(1)
+
+def _guardar_snapshot_de_mercado(sesion: Session, usuarios: list[Usuario], dia: date) -> None:
+    """Guarda la foto del mercado del dia. El mercado es el mismo para toda la liga, asi
+    que basta con el primer usuario cuyo token funcione."""
+    for usuario in usuarios:
+        try:
+            cliente = ClienteOficial(sesion, usuario.id)
+            league_id, _ = cliente.obtener_liga_y_equipo()
+            subastas = cliente.obtener_mercado(league_id)
+        except ErrorAPIOficial as exc:
+            logger.warning("no se pudo leer el mercado con un usuario: %s", exc)
+            continue
+
+        oficiales = [s.jugador for s in subastas]
+        # Se compone leyendo de la BD, igual que hara la web: si esto sale bien, la web
+        # tambien funcionara.
+        analitica = recolectar_analitica_de_bd(sesion, oficiales)
+        presentados = componer(oficiales, analitica)
+
+        escritos = _guardar(sesion, dia, subastas, presentados)
+        con_analitica = sum(1 for p in presentados if p.analitica.disponible)
+        logger.info(
+            "snapshot guardado: %d jugadores, %d con analitica, %d sin",
+            escritos, con_analitica, escritos - con_analitica,
+        )
+        logger.info("matching: %d jugadores sin emparejar", analitica.sin_emparejar)
+        return
+
+    logger.error("ningun usuario pudo leer el mercado; no se ha guardado el snapshot")
+    raise SystemExit(1)
 
 
 if __name__ == "__main__":

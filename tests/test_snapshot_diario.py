@@ -105,54 +105,61 @@ def test_con_analitica_se_guardan_ambos_bloques(limpio):
     assert fila.tendencia_variacion_euros == 5000
 
 
-def test_deteccion_de_trabajo_ya_hecho(limpio):
-    """R41: base de la idempotencia del cron.
-
-    "Hecho" exige snapshot **y** analitica: ver
-    test_snapshot_sin_analitica_no_cuenta_como_trabajo_hecho.
-    """
-    from fantasy.storage.modelos import AnaliticaDiaria
-
-    assert snapshot_diario._ya_hay_snapshot(limpio, HOY) is False
-
-    snapshot_diario._guardar(limpio, HOY, [_SubastaFalsa(_OficialFalso())], [_presentado(True)])
-    limpio.add(AnaliticaDiaria(
-        fecha=HOY, id_externo="X", nombre_externo="x", equipo_externo="11",
-        origen="futbolfantasy.com", capturado_en=datetime.now(timezone.utc),
-    ))
-    limpio.commit()
-
-    try:
-        assert snapshot_diario._ya_hay_snapshot(limpio, HOY) is True
-    finally:
-        limpio.execute(delete(AnaliticaDiaria).where(AnaliticaDiaria.fecha == HOY))
-        limpio.commit()
-
-
 @pytest.mark.parametrize(
-    ("momento_utc", "debe_escribir"),
+    ("momento_utc", "guarda_snapshot"),
     [
-        (datetime(2026, 8, 28, 15, 0, tzinfo=timezone.utc), False),  # 17:00 Madrid (CEST)
+        (datetime(2026, 8, 28, 15, 0, tzinfo=timezone.utc), False),   # 17:00 Madrid (CEST)
         (datetime(2026, 8, 28, 16, 30, tzinfo=timezone.utc), True),   # 18:30 Madrid (CEST)
         (datetime(2026, 1, 28, 16, 30, tzinfo=timezone.utc), False),  # 17:30 Madrid (CET)
         (datetime(2026, 1, 28, 17, 30, tzinfo=timezone.utc), True),   # 18:30 Madrid (CET)
     ],
 )
-def test_guardia_horaria_segun_la_estacion(momento_utc, debe_escribir):
-    """R42: el mismo cron UTC cae antes o después del cierre según sea verano o invierno.
+def test_la_guardia_horaria_solo_afecta_al_snapshot_de_mercado(momento_utc, guarda_snapshot):
+    """R42: el mismo cron UTC cae antes o despues del cierre segun la estacion.
 
-    Ejecuta `main()` de verdad: comprueba que un disparo temprano ni siquiera llega a
-    consultar usuarios, que es lo que garantiza que no escribe nada.
+    Desde que hay disparos de madrugada, la guardia ya NO corta la ejecucion entera: la
+    analitica se refresca siempre (es lo que consultan las pantallas) y solo el snapshot
+    de mercado espera al cierre de las 18:00.
     """
     with patch.object(snapshot_diario.sys, "argv", ["snapshot_diario.py"]):
         with patch.object(snapshot_diario, "ahora_en_madrid", return_value=momento_utc):
-            with patch.object(snapshot_diario, "_ya_hay_snapshot", return_value=False):
+            with patch.object(snapshot_diario, "_usuarios_con_credenciales", return_value=["u"]):
                 with patch.object(
-                    snapshot_diario, "_usuarios_con_credenciales", return_value=[]
-                ) as usuarios:
-                    snapshot_diario.main()
+                    snapshot_diario, "scrapear_todo_para_guardar", return_value=([], {})
+                ):
+                    with patch.object(snapshot_diario, "_ya_hay_snapshot", return_value=False):
+                        with patch.object(
+                            snapshot_diario, "_guardar_snapshot_de_mercado"
+                        ) as guardar:
+                            with patch.object(snapshot_diario, "purgar_snapshots_antiguos", return_value=0):
+                                with patch.object(snapshot_diario, "purgar_analitica_antigua", return_value=0):
+                                    snapshot_diario.main()
 
-    assert usuarios.called is debe_escribir
+    assert guardar.called is guarda_snapshot
+
+
+def test_la_analitica_se_refresca_aunque_el_mercado_no_haya_cerrado():
+    """El disparo de madrugada existe justo para esto: el valor cambia a las 00:00 y la
+    analitica debe reflejarlo, sin esperar al cierre de las 18:00."""
+    madrugada = datetime(2026, 8, 28, 0, 30, tzinfo=timezone.utc)  # 02:30 Madrid
+
+    with patch.object(snapshot_diario.sys, "argv", ["snapshot_diario.py"]):
+        with patch.object(snapshot_diario, "ahora_en_madrid", return_value=madrugada):
+            with patch.object(snapshot_diario, "_usuarios_con_credenciales", return_value=["u"]):
+                with patch.object(
+                    snapshot_diario, "scrapear_todo_para_guardar", return_value=(["t"], {})
+                ):
+                    with patch.object(
+                        snapshot_diario, "guardar_analitica_del_dia", return_value=669
+                    ) as guardar_analitica:
+                        with patch.object(snapshot_diario, "_ya_hay_snapshot", return_value=False):
+                            with patch.object(snapshot_diario, "_guardar_snapshot_de_mercado") as snap:
+                                with patch.object(snapshot_diario, "purgar_snapshots_antiguos", return_value=0):
+                                    with patch.object(snapshot_diario, "purgar_analitica_antigua", return_value=0):
+                                        snapshot_diario.main()
+
+    guardar_analitica.assert_called_once()
+    assert not snap.called, "de madrugada no se toca el snapshot de mercado"
 
 
 def test_solo_se_usan_usuarios_con_credenciales(sesion_db, usuario_de_prueba):
@@ -164,27 +171,15 @@ def test_solo_se_usan_usuarios_con_credenciales(sesion_db, usuario_de_prueba):
     assert encontrados == [], "sin credenciales guardadas no debe seleccionarse"
 
 
-def test_snapshot_sin_analitica_no_cuenta_como_trabajo_hecho(limpio):
-    """Si falta la analitica, el dia NO esta hecho aunque exista el snapshot.
+def test_la_deteccion_de_snapshot_ignora_la_analitica(limpio):
+    """`_ya_hay_snapshot` solo mira market_snapshot a proposito.
 
-    Mirar solo market_snapshot dejaba la web sin datos hasta el dia siguiente: paso de
-    verdad en local. La analitica es lo que consume la web, asi que cuenta igual.
+    Antes exigia tambien analitica, para que un dia a medias se regenerase. Con los
+    disparos de madrugada esa proteccion sobra: la analitica se refresca en cada
+    ejecucion, asi que mezclarlas impedia recapturarla cuando ya habia snapshot.
     """
-    from fantasy.storage.modelos import AnaliticaDiaria
+    assert snapshot_diario._ya_hay_snapshot(limpio, HOY) is False
 
     snapshot_diario._guardar(limpio, HOY, [_SubastaFalsa(_OficialFalso())], [_presentado(True)])
 
-    # Hay snapshot pero no analitica: el trabajo NO esta completo.
-    assert snapshot_diario._ya_hay_snapshot(limpio, HOY) is False
-
-    limpio.add(AnaliticaDiaria(
-        fecha=HOY, id_externo="X", nombre_externo="x", equipo_externo="11",
-        origen="futbolfantasy.com", capturado_en=datetime.now(timezone.utc),
-    ))
-    limpio.commit()
-
-    try:
-        assert snapshot_diario._ya_hay_snapshot(limpio, HOY) is True
-    finally:
-        limpio.execute(delete(AnaliticaDiaria).where(AnaliticaDiaria.fecha == HOY))
-        limpio.commit()
+    assert snapshot_diario._ya_hay_snapshot(limpio, HOY) is True
