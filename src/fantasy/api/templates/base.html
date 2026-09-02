@@ -13,11 +13,15 @@
   <header class="container">
     <nav>
       <ul><li><strong>fantasy-scout</strong></li></ul>
-      <ul>
+      {# hx-boost: los enlaces de sección pasan a navegar por AJAX en vez de recarga
+         completa, lo que permite mostrar "Cargando…" al moverse entre secciones (algunas,
+         como Clausulazos, tardan ~5s porque leen las plantillas rivales en vivo). #}
+      <ul hx-boost="true" hx-indicator="#cargando-nav">
         <li><a href="/plantilla">Mi plantilla</a></li>
         <li><a href="/mercado">Mercado</a></li>
         <li><a href="/clausulas">Clausulazos</a></li>
         <li><a href="/token">Mi token</a></li>
+        <li><span id="cargando-nav" class="htmx-indicator">Cargando…</span></li>
       </ul>
     </nav>
   </header>

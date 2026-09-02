@@ -96,3 +96,39 @@ def test_cache_evita_segunda_peticion_de_red(cache_tmp):
     assert html1 == html2 == "<html>real</html>"
     assert mock_get.call_count == 1, "la segunda llamada debió venir de caché"
     assert mock_robots.call_count == 1, "sin red no hace falta comprobar robots.txt de nuevo"
+
+
+def test_ignorar_cache_fuerza_peticion_real(cache_tmp):
+    """Decisión del usuario (2026-09-02): el botón 'Actualizar datos' debe traer datos
+    frescos de verdad, no la misma caché de 6h que usa el cron."""
+
+    cliente = ClienteScraping()
+    cliente._config = dataclasses.replace(cliente._config, scrape_intervalo_segundos=0)
+
+    with patch("fantasy.scrapers.cliente_http.verificar_permiso"):
+        with patch("httpx.get") as mock_get:
+            mock_get.return_value.text = "<html>real</html>"
+            mock_get.return_value.raise_for_status = lambda: None
+
+            cliente.get_html("https://example.com/mismo-url")
+            cliente.get_html("https://example.com/mismo-url", ignorar_cache=True)
+
+    assert mock_get.call_count == 2, "ignorar_cache debe saltarse el HIT de caché"
+
+
+def test_ignorar_cache_sigue_guardando_para_llamadas_normales_posteriores(cache_tmp):
+    """El resultado forzado en vivo se guarda igualmente en caché: una llamada normal
+    justo después no debería volver a golpear la red."""
+
+    cliente = ClienteScraping()
+    cliente._config = dataclasses.replace(cliente._config, scrape_intervalo_segundos=0)
+
+    with patch("fantasy.scrapers.cliente_http.verificar_permiso"):
+        with patch("httpx.get") as mock_get:
+            mock_get.return_value.text = "<html>real</html>"
+            mock_get.return_value.raise_for_status = lambda: None
+
+            cliente.get_html("https://example.com/mismo-url", ignorar_cache=True)
+            cliente.get_html("https://example.com/mismo-url")
+
+    assert mock_get.call_count == 1

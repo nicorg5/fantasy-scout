@@ -2,6 +2,14 @@
    cards apiladas; en ancho se ve como tabla. Sin JS: solo media queries. #}
 {% import "macros.html" as ui %}
 
+{% if actualizado_ahora %}
+{# El botón "Actualizar datos" scrapea futbolfantasy.com en el momento (2026-09-02): la
+   fecha del cron que muestra la página ya no describe estos datos, así que se actualiza
+   aparte por fuera del hueco que sustituye htmx (R38). Si esa fecha aún no existe en el
+   DOM (nunca corrió el cron), el swap simplemente no encuentra destino y no hace nada. #}
+<p class="meta" id="analitica-de" hx-swap-oob="true">Analítica de futbolfantasy.com actualizada justo ahora.</p>
+{% endif %}
+
 <table class="jugadores" id="tabla-jugadores">
   <thead>
     <tr>

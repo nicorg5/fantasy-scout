@@ -41,15 +41,22 @@ class ClienteScraping:
             logger.info("esperando %.1fs antes de la siguiente petición (rate limit)", restante)
             time.sleep(restante)
 
-    def get_html(self, url: str) -> str:
+    def get_html(self, url: str, *, ignorar_cache: bool = False) -> str:
         """Comprueba robots.txt, usa caché si es válida, o hace UNA petición GET.
 
         Si hay HIT de caché, no se llega a comprobar robots.txt ni a esperar el
         intervalo: no hay petición de red que autorizar (ver R21).
+
+        `ignorar_cache`: para cuando el usuario pide expresamente datos frescos (botón
+        "Actualizar datos", 2026-09-02) — sin esto, un click dentro de la ventana de 6h
+        del cron devolvería el mismo HTML de siempre y el botón "no haría nada" de
+        verdad. El resultado se sigue guardando en caché igualmente, para que llamadas
+        normales posteriores sí se beneficien.
         """
-        html_cacheado = cache.leer(url, VENTANA_CACHE_SEGUNDOS)
-        if html_cacheado is not None:
-            return html_cacheado
+        if not ignorar_cache:
+            html_cacheado = cache.leer(url, VENTANA_CACHE_SEGUNDOS)
+            if html_cacheado is not None:
+                return html_cacheado
 
         user_agent = self._config.user_agent
         verificar_permiso(url, user_agent)
@@ -63,7 +70,7 @@ class ClienteScraping:
         cache.guardar(url, respuesta.text)
         return respuesta.text
 
-    def get_html_seguro(self, url: str) -> str | None:
+    def get_html_seguro(self, url: str, *, ignorar_cache: bool = False) -> str | None:
         """Igual que `get_html`, pero nunca lanza: un fallo de red o HTTP se traduce en
         `None`. Es lo que usa cualquier llamador que no pueda permitirse tumbar una
         petición web por culpa de un sitio de terceros caído (regla dura de degradación,
@@ -71,7 +78,7 @@ class ClienteScraping:
         es una decisión nuestra, no un fallo del sitio, y merece verse.
         """
         try:
-            return self.get_html(url)
+            return self.get_html(url, ignorar_cache=ignorar_cache)
         except httpx.HTTPError as exc:
             logger.warning("scraping degradado: fallo de red/HTTP en %s: %s", url, exc)
             return None

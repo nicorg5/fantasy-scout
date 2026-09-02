@@ -101,13 +101,16 @@ def recolectar_analitica_de_bd(sesion: Session, oficiales: list[JugadorOficial])
     )
 
 
-def recolectar_analitica(oficiales: list[JugadorOficial]) -> Analitica:
-    """Scrapea EN VIVO y empareja. Solo la usa el cron: es lenta por diseño (rate limit).
+def recolectar_analitica(oficiales: list[JugadorOficial], *, ignorar_cache: bool = False) -> Analitica:
+    """Scrapea EN VIVO y empareja: la usa el cron, y también el botón "Actualizar datos"
+    con `ignorar_cache=True` (2026-09-02) para que de verdad traiga datos frescos y no la
+    misma caché de 6h que el cron. Es lenta por diseño (rate limit), pero acotada a los
+    equipos de `oficiales`, no a toda la liga.
 
     **Nunca lanza**: si algo falla, devuelve `Analitica.vacia()`."""
     cliente = ClienteScraping()
 
-    tendencias_lista = obtener_tendencias_mercado(cliente)
+    tendencias_lista = obtener_tendencias_mercado(cliente, ignorar_cache=ignorar_cache)
     if not tendencias_lista:
         logger.warning("sin tendencias de mercado: la analítica se servirá como no disponible")
         return Analitica.vacia()
@@ -125,14 +128,20 @@ def recolectar_analitica(oficiales: list[JugadorOficial]) -> Analitica:
             "jugadores sin emparejar: %d de %d", len(sin_emparejar), len(oficiales)
         )
 
-    probabilidades = _probabilidades_de_los_equipos(cliente, oficiales, emparejados)
+    probabilidades = _probabilidades_de_los_equipos(
+        cliente, oficiales, emparejados, ignorar_cache=ignorar_cache
+    )
     return Analitica(
         {e.id_oficial: e for e in emparejados}, tendencias, probabilidades, len(sin_emparejar)
     )
 
 
 def _probabilidades_de_los_equipos(
-    cliente: ClienteScraping, oficiales: list[JugadorOficial], emparejados: list[Emparejamiento]
+    cliente: ClienteScraping,
+    oficiales: list[JugadorOficial],
+    emparejados: list[Emparejamiento],
+    *,
+    ignorar_cache: bool = False,
 ) -> dict:
     """La probabilidad vive en la página de cada equipo, así que hay que visitar una por
     equipo implicado. Son pocos (los del mercado del día) y el cliente ya serializa las
@@ -145,7 +154,9 @@ def _probabilidades_de_los_equipos(
         if (id_ff := equipo_futbolfantasy(o.equipo_id))
         and (slug := slug_equipo_futbolfantasy(o.equipo_id))
     }
-    por_id = _scrapear_probabilidades(cliente, slug_por_id_equipo.values())
+    por_id = _scrapear_probabilidades(
+        cliente, slug_por_id_equipo.values(), ignorar_cache=ignorar_cache
+    )
     return {
         e.candidato.id_externo: por_id[e.candidato.id_externo]
         for e in emparejados
@@ -153,7 +164,9 @@ def _probabilidades_de_los_equipos(
     }
 
 
-def _scrapear_probabilidades(cliente: ClienteScraping, slugs_equipo) -> dict[str, object]:
+def _scrapear_probabilidades(
+    cliente: ClienteScraping, slugs_equipo, *, ignorar_cache: bool = False
+) -> dict[str, object]:
     """Descarga la página de cada equipo y devuelve las probabilidades indexadas por el
     id numérico de futbolfantasy — el MISMO que usa la tabla de mercado
     (`TendenciaScrapeada.id_futbolfantasy`).
@@ -172,7 +185,7 @@ def _scrapear_probabilidades(cliente: ClienteScraping, slugs_equipo) -> dict[str
     """
     por_id: dict[str, object] = {}
     for slug in slugs_equipo:
-        for probabilidad in obtener_probabilidades_equipo(cliente, slug):
+        for probabilidad in obtener_probabilidades_equipo(cliente, slug, ignorar_cache=ignorar_cache):
             por_id[probabilidad.id_futbolfantasy] = probabilidad
     return por_id
 
@@ -217,25 +230,44 @@ def fecha_de_la_analitica(sesion: Session) -> date | None:
     return fecha
 
 
-def obtener_mercado(sesion: Session, usuario_id: uuid.UUID) -> list[JugadorPresentado]:
+def obtener_mercado(
+    sesion: Session, usuario_id: uuid.UUID, en_vivo: bool = False
+) -> list[JugadorPresentado]:
     """Mercado del día enriquecido.
 
     Si LaLiga falla, **propaga** (es la fuente de verdad y el usuario debe enterarse);
     si el scraping falla, **degrada**. Esa asimetría es deliberada.
+
+    `en_vivo`: decisión del usuario (2026-09-02) para el botón "Actualizar datos" — vuelve
+    a scrapear futbolfantasy.com en el momento, en vez de leer la analítica cacheada del
+    cron. Solo lo pide `/mercado/tabla`; la carga normal de la página sigue siendo
+    instantánea porque lee de BD.
     """
     cliente = ClienteOficial(sesion, usuario_id)
     league_id, _ = cliente.obtener_liga_y_equipo()
     subastas = cliente.obtener_mercado(league_id)
     oficiales = [s.jugador for s in subastas]
-    return componer(oficiales, recolectar_analitica_de_bd(sesion, oficiales))
+    analitica = (
+        recolectar_analitica(oficiales, ignorar_cache=True)
+        if en_vivo
+        else recolectar_analitica_de_bd(sesion, oficiales)
+    )
+    return componer(oficiales, analitica)
 
 
-def obtener_plantilla(sesion: Session, usuario_id: uuid.UUID) -> list[JugadorPresentado]:
+def obtener_plantilla(
+    sesion: Session, usuario_id: uuid.UUID, en_vivo: bool = False
+) -> list[JugadorPresentado]:
     cliente = ClienteOficial(sesion, usuario_id)
     league_id, team_id = cliente.obtener_liga_y_equipo()
     plantilla = cliente.obtener_plantilla(league_id, team_id)
     oficiales = [j.jugador for j in plantilla.jugadores]
-    return componer(oficiales, recolectar_analitica_de_bd(sesion, oficiales))
+    analitica = (
+        recolectar_analitica(oficiales, ignorar_cache=True)
+        if en_vivo
+        else recolectar_analitica_de_bd(sesion, oficiales)
+    )
+    return componer(oficiales, analitica)
 
 
 def scrapear_todo_para_guardar(cliente: ClienteScraping | None = None):

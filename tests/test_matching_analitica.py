@@ -85,7 +85,7 @@ def test_cruce_de_probabilidades_es_por_id_exacto():
     """
     from fantasy.analytics.servicio import _scrapear_probabilidades
 
-    def cliente_falso(_cliente, slug):
+    def cliente_falso(_cliente, slug, **_kwargs):
         return [_probabilidad("11830")] if slug == "real-madrid" else []
 
     from unittest.mock import patch

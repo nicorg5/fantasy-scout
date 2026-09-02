@@ -6,7 +6,7 @@
 {% if jugadores and analitica_de %}
 {# De cuando es la analitica: se actualiza una vez al dia, y decirlo evita que se
    confunda con datos en tiempo real. #}
-<p class="meta">Analítica de futbolfantasy.com capturada el {{ analitica_de.strftime("%d/%m/%Y") }}.</p>
+<p class="meta" id="analitica-de">Analítica de futbolfantasy.com capturada el {{ analitica_de.strftime("%d/%m/%Y") }}.</p>
 {% endif %}
 {% if jugadores %}
 <div class="barra-acciones">
@@ -16,7 +16,7 @@
           hx-swap="outerHTML"
           hx-indicator="#cargando"
           class="secondary">Actualizar datos</button>
-  <span id="cargando" class="htmx-indicator">actualizando…</span>
+  <span id="cargando" class="htmx-indicator">actualizando desde futbolfantasy.com, puede tardar unos segundos…</span>
 </div>
 {% include "_datos_plantilla.html" %}
 {% endif %}

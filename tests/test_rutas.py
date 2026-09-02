@@ -135,6 +135,43 @@ def test_fragmento_htmx_exige_sesion(cliente, ruta):
     assert respuesta.status_code == 302
 
 
+@pytest.mark.parametrize(
+    ("ruta", "destino"),
+    [("/plantilla/tabla", "obtener_plantilla"), ("/mercado/tabla", "obtener_mercado")],
+)
+def test_boton_actualizar_pide_analitica_en_vivo(cliente_autenticado, ruta, destino):
+    """Decisión del usuario (2026-09-02): el botón 'Actualizar datos' debe volver a
+    scrapear futbolfantasy.com, no solo releer la BD (a diferencia de la carga normal)."""
+    with patch(f"fantasy.api.app.{destino}", return_value=[_jugador()]) as mock_obtener:
+        cliente_autenticado.get(ruta)
+
+    assert mock_obtener.call_args.kwargs.get("en_vivo") is True
+
+
+@pytest.mark.parametrize("ruta", ["/plantilla", "/mercado"])
+def test_la_carga_normal_de_la_pagina_no_pide_analitica_en_vivo(cliente_autenticado, ruta):
+    """La carga normal sigue siendo instantánea: solo el botón fuerza el scrape."""
+    destino = DESTINO[ruta]
+    with patch(f"fantasy.api.app.{destino}", return_value=[_jugador()]) as mock_obtener:
+        cliente_autenticado.get(ruta)
+
+    assert mock_obtener.call_args.kwargs.get("en_vivo") is not True
+
+
+@pytest.mark.parametrize(
+    ("ruta", "destino"),
+    [("/plantilla/tabla", "obtener_plantilla"), ("/mercado/tabla", "obtener_mercado")],
+)
+def test_boton_actualizar_refresca_la_fecha_via_oob(cliente_autenticado, ruta, destino):
+    """El fragmento manda su propia actualización OOB del texto 'capturado el', porque
+    tras un scrape en vivo la fecha del cron ya no describe lo que se muestra."""
+    with patch(f"fantasy.api.app.{destino}", return_value=[_jugador()]):
+        html = cliente_autenticado.get(ruta).text
+
+    assert 'id="analitica-de"' in html
+    assert 'hx-swap-oob="true"' in html
+
+
 def test_fragmento_con_error_sigue_siendo_fragmento(cliente_autenticado):
     """Un fallo no puede devolver la página completa dentro del hueco de la tabla."""
     with patch("fantasy.api.app.obtener_mercado", side_effect=TokenInvalido("caducado")):
@@ -152,6 +189,16 @@ def test_las_paginas_cargan_htmx_sin_build_step(cliente_autenticado):
 
     assert "htmx.org" in html
     assert 'hx-get="/plantilla/tabla"' in html
+
+
+def test_la_navegacion_entre_secciones_muestra_cargando(cliente_autenticado):
+    """Decisión del usuario (2026-09-02): moverse entre secciones debe mostrar un aviso
+    de carga. Se hace vía hx-boost, para no añadir JS propio (R4/R37)."""
+    with patch("fantasy.api.app.obtener_plantilla", return_value=[_jugador()]):
+        html = cliente_autenticado.get("/plantilla").text
+
+    assert 'hx-boost="true"' in html
+    assert 'id="cargando-nav"' in html
 
 
 # --- variación total de la plantilla ---

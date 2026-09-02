@@ -95,11 +95,15 @@ def _pagina_de_jugadores(request, plantilla_html: str, titulo: str, cargar, sesi
     )
 
 
-def _fragmento_tabla(request, titulo: str, cargar, con_variacion: bool = False):
+def _fragmento_tabla(request, titulo: str, cargar, con_variacion: bool = False, en_vivo: bool = False):
     """Devuelve SOLO la tabla, no la página entera: es lo que hace útil a htmx (R38).
 
     Un fallo aquí no puede devolver la página completa dentro del hueco de la tabla, así
     que los errores se renderizan como una fila de aviso dentro del mismo fragmento.
+
+    `en_vivo` solo afecta al texto de "capturado el": cuando el botón "Actualizar datos"
+    fuerza un scrape en el momento, la fecha del cron ya no describe lo que se está
+    mostrando, así que el fragmento manda su propia actualización OOB de ese texto.
     """
     try:
         jugadores = cargar()
@@ -126,6 +130,7 @@ def _fragmento_tabla(request, titulo: str, cargar, con_variacion: bool = False):
         context={
             "jugadores": jugadores,
             "variacion": calcular_variacion(jugadores) if con_variacion else None,
+            "actualizado_ahora": en_vivo,
         },
     )
 
@@ -186,8 +191,8 @@ def plantilla_tabla(
     sesion: Session = Depends(obtener_sesion),
 ):
     return _fragmento_tabla(
-        request, "Mi plantilla", lambda: obtener_plantilla(sesion, usuario.id),
-        con_variacion=True,
+        request, "Mi plantilla", lambda: obtener_plantilla(sesion, usuario.id, en_vivo=True),
+        con_variacion=True, en_vivo=True,
     )
 
 
@@ -197,7 +202,10 @@ def mercado_tabla(
     usuario: Usuario = Depends(usuario_actual),
     sesion: Session = Depends(obtener_sesion),
 ):
-    return _fragmento_tabla(request, "Mercado de hoy", lambda: obtener_mercado(sesion, usuario.id))
+    return _fragmento_tabla(
+        request, "Mercado de hoy", lambda: obtener_mercado(sesion, usuario.id, en_vivo=True),
+        en_vivo=True,
+    )
 
 
 @app.get("/plantilla")

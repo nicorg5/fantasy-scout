@@ -9,8 +9,15 @@ from unittest.mock import patch
 import pytest
 
 from fantasy.analytics.presentacion import ProbabilidadJugar, TendenciaValor
-from fantasy.analytics.servicio import Analitica, componer, recolectar_analitica
+from fantasy.analytics.servicio import (
+    Analitica,
+    componer,
+    obtener_mercado,
+    obtener_plantilla,
+    recolectar_analitica,
+)
 from fantasy.matching.emparejador import CandidatoExterno, Emparejamiento
+from fantasy.official.modelos import JugadorPlantilla, Plantilla, SubastaMercado
 from fantasy.scrapers.parsers import ProbabilidadScrapeada, TendenciaScrapeada
 
 AHORA = datetime.now(timezone.utc)
@@ -89,3 +96,71 @@ def test_recolectar_analitica_no_lanza_si_el_scraper_falla():
 
     assert analitica.emparejamientos == {}
     assert not analitica.hay_datos
+
+
+def _cliente_oficial_falso(*, mercado=None, plantilla=None):
+    """Doble de `ClienteOficial`: evita tocar sesión de BD ni red en estos tests, que solo
+    comprueban qué recolector de analítica se elige según `en_vivo`."""
+    from unittest.mock import MagicMock
+
+    cliente = MagicMock()
+    cliente.obtener_liga_y_equipo.return_value = ("liga-1", 1)
+    if mercado is not None:
+        cliente.obtener_mercado.return_value = mercado
+    if plantilla is not None:
+        cliente.obtener_plantilla.return_value = plantilla
+    return cliente
+
+
+def test_obtener_mercado_en_vivo_scrapea_al_momento():
+    """Decisión del usuario (2026-09-02): el botón 'Actualizar datos' debe volver a
+    scrapear futbolfantasy.com, no solo releer la BD."""
+    subasta = SubastaMercado(
+        id="1", jugador=OFICIALES[0], precio_venta=1, expira_en=AHORA, numero_pujas=0
+    )
+    cliente = _cliente_oficial_falso(mercado=[subasta])
+
+    with (
+        patch("fantasy.analytics.servicio.ClienteOficial", return_value=cliente),
+        patch("fantasy.analytics.servicio.recolectar_analitica", return_value=Analitica.vacia()) as en_vivo,
+        patch("fantasy.analytics.servicio.recolectar_analitica_de_bd") as en_bd,
+    ):
+        obtener_mercado(sesion=None, usuario_id=None, en_vivo=True)
+
+    en_vivo.assert_called_once()
+    en_bd.assert_not_called()
+
+
+def test_obtener_mercado_por_defecto_lee_de_bd():
+    """La carga normal de la página sigue siendo instantánea: no scrapea en cada visita."""
+    subasta = SubastaMercado(
+        id="1", jugador=OFICIALES[0], precio_venta=1, expira_en=AHORA, numero_pujas=0
+    )
+    cliente = _cliente_oficial_falso(mercado=[subasta])
+
+    with (
+        patch("fantasy.analytics.servicio.ClienteOficial", return_value=cliente),
+        patch("fantasy.analytics.servicio.recolectar_analitica") as en_vivo,
+        patch("fantasy.analytics.servicio.recolectar_analitica_de_bd", return_value=Analitica.vacia()) as en_bd,
+    ):
+        obtener_mercado(sesion=None, usuario_id=None)
+
+    en_bd.assert_called_once()
+    en_vivo.assert_not_called()
+
+
+def test_obtener_plantilla_en_vivo_scrapea_al_momento():
+    jugador_plantilla = JugadorPlantilla(jugador=OFICIALES[0], clausula=1, blindado=False)
+    cliente = _cliente_oficial_falso(
+        plantilla=Plantilla(jugadores=[jugador_plantilla], dinero=0, valor_equipo=0, puntos=0)
+    )
+
+    with (
+        patch("fantasy.analytics.servicio.ClienteOficial", return_value=cliente),
+        patch("fantasy.analytics.servicio.recolectar_analitica", return_value=Analitica.vacia()) as en_vivo,
+        patch("fantasy.analytics.servicio.recolectar_analitica_de_bd") as en_bd,
+    ):
+        obtener_plantilla(sesion=None, usuario_id=None, en_vivo=True)
+
+    en_vivo.assert_called_once()
+    en_bd.assert_not_called()
