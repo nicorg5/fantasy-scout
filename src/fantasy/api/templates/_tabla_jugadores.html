@@ -24,8 +24,7 @@
     {% for jugador in jugadores %}
     <tr>
       <td data-etiqueta="Jugador">
-        <strong>{{ jugador.nombre }}</strong>
-        <span class="meta">{{ jugador.equipo }} · {{ jugador.posicion }}</span>
+        {{ ui.identidad_jugador(jugador.nombre, jugador.equipo, jugador.posicion) }}
       </td>
       <td data-etiqueta="Valor de mercado">
         <span class="valor">{{ jugador.valor_mercado_euros | euros }}</span>

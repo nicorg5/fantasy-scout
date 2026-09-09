@@ -19,8 +19,7 @@
     {% for f in clausulas %}
     <tr class="{{ 'fichable' if f.fichable else 'bloqueada' }}">
       <td data-etiqueta="Jugador">
-        <strong>{{ f.nombre }}</strong>
-        <span class="meta">{{ f.equipo }} · {{ f.posicion }}</span>
+        {{ ui.identidad_jugador(f.nombre, f.equipo, f.posicion) }}
       </td>
       <td data-etiqueta="Manager">{{ f.manager }}</td>
       <td data-etiqueta="Cláusula">

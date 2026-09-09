@@ -11,6 +11,29 @@
 <span class="origen">fuente: {{ origen }}</span>
 {%- endmacro %}
 
+{# Posicion abreviada y con color, como en las apps de fantasy: en una tabla de 15+
+   jugadores "Centrocampista" repetido es ruido, "MED" se lee de un vistazo.
+   El color solo refuerza: el texto sigue diciendo cual es, y el title da el nombre
+   completo para quien amplie o use lector de pantalla. #}
+{% macro insignia_posicion(posicion) -%}
+  {%- set abreviaturas = {
+        "Portero": "POR", "Defensa": "DEF", "Centrocampista": "MED",
+        "Delantero": "DEL", "Entrenador": "ENT",
+      } -%}
+  {%- set corta = abreviaturas.get(posicion) -%}
+  <span class="pos pos--{{ (corta or 'otra') | lower }}" title="{{ posicion }}">{{ corta or posicion }}</span>
+{%- endmacro %}
+
+{# Nombre + equipo + posicion: el bloque de identidad del jugador, igual en las tres
+   pantallas. #}
+{% macro identidad_jugador(nombre, equipo, posicion) -%}
+<span class="jugador-nombre">{{ nombre }}</span>
+<span class="jugador-sub">
+  {{ insignia_posicion(posicion) }}
+  <span class="equipo">{{ equipo }}</span>
+</span>
+{%- endmacro %}
+
 {% macro celda_tendencia(analitica) -%}
   {% if analitica.disponible and analitica.tendencia_valor %}
     <span class="tendencia tendencia--{{ analitica.tendencia_valor.direccion }}">
@@ -27,7 +50,15 @@
    todos, pero probabilidad solo para los del once probable. Un hueco siempre se explica. #}
 {% macro celda_probabilidad(analitica) -%}
   {% if analitica.disponible and analitica.probabilidad_jugar %}
-    <span class="probabilidad">{{ analitica.probabilidad_jugar.porcentaje }} %</span>
+    {% set pct = analitica.probabilidad_jugar.porcentaje %}
+    {# Umbrales: >=75 es titular claro, 40-74 es duda, <40 es descarte practico. El color
+       acompana al numero, que sigue siendo el dato: nunca se muestra solo la barra. #}
+    <span class="prob prob--{{ 'alta' if pct >= 75 else ('media' if pct >= 40 else 'baja') }}">
+      <span class="prob__valor">{{ pct }} %</span>
+      {# La barra es decorativa (el % ya esta escrito al lado), de ahi el aria-hidden.
+         El ancho es DATO, no maquetacion, asi que no puede vivir en la hoja de estilos. #}
+      <span class="prob__barra" style="--pct: {{ pct }}%" aria-hidden="true"></span>
+    </span>
     {{ etiqueta_origen(analitica.origen) }}
   {% elif analitica.disponible %}
     <span class="badge-no-disponible" title="{{ analitica.motivo_probabilidad }}">sin dato</span>

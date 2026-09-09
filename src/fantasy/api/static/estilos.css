@@ -1,13 +1,172 @@
-/* Mobile-first sobre Pico.css. Sin build step y sin JS propio.
-   Base (móvil): cada fila de la tabla se pinta como una card apilada.
-   A partir de 768px: tabla de verdad. */
+/* Tema visual inspirado en la app de LaLiga Fantasy, sobre Pico.css.
+   Sin build step y sin JS propio.
 
+   La paleta NO esta inventada: sale del CSS de produccion de fantasy.laliga.com
+   (2026-09-09), separando lo que es Bootstrap por defecto de lo que es marca propia.
+   Ver design.md §Identidad visual.
+
+   Base (movil): cada fila de la tabla se pinta como una card. Desde 768px: tabla. */
+
+:root {
+  /* --- Paleta LaLiga Fantasy --- */
+  --ll-fondo: #11111f;          /* body{background-color:#11111f} */
+  --ll-fondo-hundido: #00000a;  /* secciones oscuras de su home */
+  --ll-superficie: #232433;     /* .modal-body, dropdowns */
+  --ll-superficie-alta: #2b2c3d;/* hover sobre superficie */
+  --ll-borde: #353542;          /* header/footer border */
+  --ll-acento: #ff4b44;         /* .primary-text */
+  --ll-acento-oscuro: #d93a34;
+  --ll-texto: #ffffff;
+  --ll-texto-suave: #d6d6db;
+
+  /* Su gris tenue real (#7b7b8c) da 3.68:1 sobre las cards y NO cumple AA para texto
+     normal. Se aclara lo justo para pasar (5.5:1) sin perder el tono lavanda. */
+  --ll-texto-tenue: #9a9aad;
+
+  /* --- Colores de dato (verificados >4.5:1 sobre fondo y sobre card) --- */
+  --ll-sube: #4ade80;
+  --ll-baja: #ff6259;
+  --ll-aviso: #ffb020;
+  --ll-info: #5aa9ff;
+
+  --ll-radio: 8px;
+  --ll-radio-chico: 4px;
+}
+
+/* Overrides de Pico. Se apunta a :root[data-theme="dark"] (0,2,0) para ganar sin
+   depender del orden de carga frente a los [data-theme=dark] de Pico. */
+:root[data-theme="dark"] {
+  --pico-background-color: var(--ll-fondo);
+  --pico-color: var(--ll-texto-suave);
+  --pico-h1-color: var(--ll-texto);
+  --pico-h2-color: var(--ll-texto);
+  --pico-h3-color: var(--ll-texto);
+  --pico-h4-color: var(--ll-texto);
+  --pico-h5-color: var(--ll-texto);
+  --pico-h6-color: var(--ll-texto);
+  --pico-muted-color: var(--ll-texto-tenue);
+  --pico-muted-border-color: var(--ll-borde);
+  --pico-blockquote-border-color: var(--ll-borde);
+
+  --pico-primary: var(--ll-acento);
+  --pico-primary-hover: #ff6b65;
+  --pico-primary-focus: rgba(255, 75, 68, 0.3);
+  --pico-primary-inverse: #fff;
+  --pico-primary-background: var(--ll-acento);
+  --pico-primary-hover-background: var(--ll-acento-oscuro);
+  --pico-primary-border: var(--ll-acento);
+  --pico-primary-hover-border: var(--ll-acento-oscuro);
+  --pico-primary-underline: rgba(255, 75, 68, 0.5);
+
+  --pico-secondary: var(--ll-texto-tenue);
+  --pico-secondary-background: transparent;
+  --pico-secondary-hover-background: var(--ll-superficie-alta);
+  --pico-secondary-border: var(--ll-borde);
+  --pico-secondary-hover-border: var(--ll-texto-tenue);
+  --pico-secondary-inverse: var(--ll-texto);
+
+  --pico-card-background-color: var(--ll-superficie);
+  --pico-card-border-color: var(--ll-borde);
+  --pico-card-sectioning-background-color: var(--ll-superficie-alta);
+
+  --pico-form-element-background-color: var(--ll-superficie);
+  --pico-form-element-border-color: var(--ll-borde);
+  --pico-form-element-color: var(--ll-texto);
+  --pico-form-element-active-background-color: var(--ll-superficie);
+  --pico-form-element-active-border-color: var(--ll-acento);
+  --pico-form-element-focus-color: var(--ll-acento);
+  --pico-form-element-placeholder-color: var(--ll-texto-tenue);
+
+  --pico-ins-color: var(--ll-sube);
+  --pico-del-color: var(--ll-baja);
+  --pico-code-background-color: var(--ll-superficie);
+  --pico-border-radius: var(--ll-radio);
+  --pico-font-family: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+body {
+  background-color: var(--ll-fondo);
+  /* Las cifras son el contenido principal: que no bailen de ancho al actualizarse. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Cabecera --- */
+.cabecera {
+  background: var(--ll-fondo);
+  border-bottom: 1px solid var(--ll-borde);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.cabecera__fila {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .5rem 1rem;
+  padding-top: .7rem;
+  padding-bottom: .7rem;
+}
+
+.marca {
+  font-weight: 700;
+  font-size: 1.15rem;
+  letter-spacing: -.01em;
+  text-transform: lowercase;
+  color: var(--ll-texto);
+  text-decoration: none;
+  margin-right: auto;
+}
+.marca__acento { color: var(--ll-acento); }
+
+.secciones ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .15rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.secciones a {
+  display: block;
+  padding: .4rem .7rem;
+  border-radius: var(--ll-radio-chico);
+  font-weight: 600;
+  font-size: .95rem;
+  color: var(--ll-texto-tenue);
+  text-decoration: none;
+  /* Borde inferior siempre presente aunque transparente: sin esto el enlace activo
+     salta 2px al cambiar de seccion. */
+  border-bottom: 2px solid transparent;
+}
+.secciones a:hover { color: var(--ll-texto); background: var(--ll-superficie); }
+
+/* La seccion actual: color + subrayado, no solo color (no depender del color solo). */
+.secciones a[aria-current="page"] {
+  color: var(--ll-texto);
+  border-bottom-color: var(--ll-acento);
+}
+
+/* --- Titulos de pantalla --- */
+main h1 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  margin-bottom: .25rem;
+}
+main h1 + p { color: var(--ll-texto-tenue); font-size: .95rem; }
+
+.pie { border-top: 1px solid var(--ll-borde); color: var(--ll-texto-tenue); }
+
+/* --- Tabla / cards de jugadores --- */
 .jugadores {
-  --borde: var(--pico-muted-border-color);
+  --borde: var(--ll-borde);
+  margin-bottom: 0;
 }
 
 .jugadores thead {
-  /* En móvil la cabecera sobra: cada celda lleva su propia etiqueta. */
+  /* En movil la cabecera sobra: cada celda lleva su propia etiqueta. */
   position: absolute;
   width: 1px;
   height: 1px;
@@ -24,142 +183,189 @@
   width: 100%;
 }
 
+/* Card en movil: rejilla de 2 columnas. Antes era una lista vertical de 5+ filas por
+   jugador, que obligaba a hacer mucho scroll para comparar dos jugadores. */
 .jugadores tr {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .35rem .9rem;
+  background: var(--ll-superficie);
   border: 1px solid var(--borde);
-  border-radius: var(--pico-border-radius);
-  padding: 0.75rem 1rem;
-  margin-bottom: 1rem;
+  border-radius: var(--ll-radio);
+  padding: .85rem 1rem;
+  margin-bottom: .75rem;
 }
 
 .jugadores td {
   border: 0;
-  padding: 0.35rem 0;
+  padding: 0;
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 0.4rem;
+  gap: .3rem;
+  min-width: 0;
 }
 
 .jugadores td::before {
   content: attr(data-etiqueta);
-  font-size: 0.75rem;
+  font-size: .68rem;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--pico-muted-color);
+  letter-spacing: .05em;
+  color: var(--ll-texto-tenue);
   flex: 0 0 100%;
 }
 
+/* El nombre manda: ocupa la fila entera y se separa del resto. */
 .jugadores td[data-etiqueta="Jugador"] {
+  grid-column: 1 / -1;
   border-bottom: 1px solid var(--borde);
-  padding-bottom: 0.6rem;
-  margin-bottom: 0.3rem;
+  padding-bottom: .6rem;
+  margin-bottom: .15rem;
+}
+.jugadores td[data-etiqueta="Jugador"]::before { content: none; }
+
+.jugador-nombre {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--ll-texto);
+  flex: 0 0 100%;
+  line-height: 1.25;
+}
+.jugador-sub {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .4rem;
+  font-size: .85rem;
+  color: var(--ll-texto-tenue);
 }
 
+/* --- Insignia de posicion --- */
+.pos {
+  display: inline-block;
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  padding: .1rem .35rem;
+  border-radius: var(--ll-radio-chico);
+}
+.pos--por  { color: var(--ll-aviso); background: rgba(255, 176, 32, .15); }
+.pos--def  { color: var(--ll-info);  background: rgba(90, 169, 255, .15); }
+.pos--med  { color: var(--ll-sube);  background: rgba(74, 222, 128, .15); }
+.pos--del  { color: var(--ll-baja);  background: rgba(255, 98, 89, .15); }
+.pos--ent,
+.pos--otra { color: var(--ll-texto-tenue); background: rgba(154, 154, 173, .15); }
+
+/* --- Cifras --- */
 .meta {
-  color: var(--pico-muted-color);
-  font-size: 0.9rem;
+  color: var(--ll-texto-tenue);
+  font-size: .8rem;
   flex: 0 0 100%;
 }
 
 .valor {
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
+  font-weight: 700;
+  font-size: 1.02rem;
+  color: var(--ll-texto);
 }
 
-.probabilidad {
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
+.tendencia { font-weight: 700; }
+.tendencia--sube    { color: var(--ll-sube); }
+.tendencia--baja    { color: var(--ll-baja); }
+.tendencia--estable { color: var(--ll-texto-tenue); }
+
+/* --- Probabilidad de jugar --- */
+.prob {
+  display: inline-flex;
+  flex-direction: column;
+  gap: .22rem;
+  min-width: 3.4rem;
 }
-
-.tendencia {
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-}
-
-.tendencia--sube { color: #1a7f4b; }
-.tendencia--baja { color: #b3261e; }
-.tendencia--estable { color: var(--pico-muted-color); }
-
-/* Origen del dato: visible en pantalla, no solo en el payload (R39). */
-.origen {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: var(--pico-muted-color);
-  border: 1px solid var(--borde);
+.prob__valor { font-weight: 700; font-size: 1.02rem; }
+.prob__barra {
+  display: block;
+  height: 3px;
   border-radius: 999px;
-  padding: 0.05rem 0.5rem;
-  /* En móvil debe poder romper: si no, la píldora más larga desborda el viewport. */
+  background: rgba(255, 255, 255, .12);
+}
+/* El ancho es DATO (viene por --pct desde la plantilla), no maquetacion. */
+.prob__barra::after {
+  content: "";
+  display: block;
+  height: 100%;
+  width: var(--pct, 0%);
+  border-radius: inherit;
+  background: currentColor;
+}
+.prob--alta  { color: var(--ll-sube); }
+.prob--media { color: var(--ll-aviso); }
+.prob--baja  { color: var(--ll-baja); }
+
+/* Origen del dato: visible en pantalla, no solo en el payload (R39). Deliberadamente
+   discreto: aparece en cada celda y compitiendo con la cifra la haria ilegible. */
+.origen {
+  font-size: .62rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--ll-texto-tenue);
+  border: 1px solid var(--ll-borde);
+  border-radius: 999px;
+  padding: .02rem .4rem;
+  /* En movil debe poder romper: si no, la pildora mas larga desborda el viewport. */
   overflow-wrap: anywhere;
   max-width: 100%;
 }
 
-/* Degradación explícita: un badge, jamás un 0 ni un guion mudo (R5). */
+/* Degradacion explicita: un badge, jamas un 0 ni un guion mudo (R5). */
 .badge-no-disponible {
-  font-size: 0.75rem;
+  font-size: .7rem;
   font-weight: 600;
-  color: #8a5a00;
-  background: #fff4d6;
-  border: 1px solid #e0b65c;
+  color: var(--ll-aviso);
+  background: rgba(255, 176, 32, .12);
+  border: 1px solid rgba(255, 176, 32, .35);
   border-radius: 999px;
-  padding: 0.1rem 0.6rem;
-}
-
-@media (prefers-color-scheme: dark) {
-  .tendencia--sube { color: #5ad48f; }
-  .tendencia--baja { color: #ff8a80; }
-  .badge-no-disponible {
-    color: #ffd98a;
-    background: #3a2e10;
-    border-color: #7a6224;
-  }
-}
-
-@media (min-width: 768px) {
-  .jugadores { display: table; }
-  .jugadores thead {
-    position: static;
-    width: auto;
-    height: auto;
-    clip: auto;
-    display: table-header-group;
-  }
-  .jugadores tbody { display: table-row-group; }
-  .jugadores tr {
-    display: table-row;
-    border: 0;
-    padding: 0;
-    margin: 0;
-  }
-  .jugadores td {
-    display: table-cell;
-    width: auto;
-    vertical-align: top;
-    border-bottom: 1px solid var(--borde);
-    padding: 0.75rem 0.5rem;
-  }
-  .jugadores td::before { content: none; }
-  .jugadores td[data-etiqueta="Jugador"] { margin-bottom: 0; }
-  .meta { display: block; }
-  .origen {
-    margin-left: 0.4rem;
-    white-space: nowrap;
-  }
+  padding: .05rem .5rem;
 }
 
 /* --- Barra de acciones y refresco htmx --- */
 .barra-acciones {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: .75rem;
-  margin-bottom: .75rem;
+  margin-bottom: .9rem;
 }
 .barra-acciones button { width: auto; margin: 0; }
 
-/* htmx-indicator: oculto salvo mientras la petición está en vuelo. */
-.htmx-indicator { opacity: 0; transition: opacity .2s; font-size: .85rem; color: var(--pico-muted-color); }
+/* htmx-indicator: oculto salvo mientras la peticion esta en vuelo. */
+.htmx-indicator { opacity: 0; transition: opacity .2s; font-size: .85rem; color: var(--ll-texto-tenue); }
 .htmx-request .htmx-indicator,
 .htmx-request.htmx-indicator { opacity: 1; }
+
+/* Aviso de carga: con el punto latiendo se distingue de un texto cualquiera. */
+.cargando {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  font-weight: 600;
+  color: var(--ll-acento);
+}
+.cargando::before {
+  content: "";
+  width: .5rem;
+  height: .5rem;
+  border-radius: 999px;
+  background: currentColor;
+  animation: latido 1s ease-in-out infinite;
+}
+@keyframes latido {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: .35; transform: scale(.7); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cargando::before { animation: none; }
+}
 
 /* --- Clausulazos --- */
 .filtros {
@@ -167,6 +373,10 @@
   flex-wrap: wrap;
   gap: .5rem;
   align-items: center;
+  background: var(--ll-superficie);
+  border: 1px solid var(--ll-borde);
+  border-radius: var(--ll-radio);
+  padding: .85rem;
   margin-bottom: 1rem;
 }
 .filtros select { width: auto; margin: 0; flex: 1 1 10rem; }
@@ -174,28 +384,102 @@
 
 /* Los disponibles son la accion posible ahora: se distinguen del resto. */
 .estado-fichable {
-  font-weight: 600;
-  color: var(--pico-ins-color, #2a7);
+  font-weight: 700;
+  font-size: .78rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--ll-sube);
+  background: rgba(74, 222, 128, .13);
+  border: 1px solid rgba(74, 222, 128, .35);
+  border-radius: 999px;
+  padding: .1rem .55rem;
 }
-.estado-bloqueada { color: var(--pico-muted-color); }
-tr.bloqueada { opacity: .72; }
+.estado-bloqueada { color: var(--ll-texto-tenue); }
 
-@media (max-width: 768px) {
-  .filtros { flex-direction: column; align-items: stretch; }
-  .filtros select, .filtros button, .filtros a[role="button"] { width: 100%; flex: none; }
-}
+/* Franja lateral: permite localizar los fichables de un vistazo sin reordenar el DOM
+   (el texto "disponible" sigue estando, el color solo refuerza). */
+.jugadores tr.fichable { border-left: 3px solid var(--ll-sube); }
+.jugadores tr.bloqueada { opacity: .78; }
 
-/* --- Variación total de la plantilla --- */
+/* --- Variacion total de la plantilla --- */
 .variacion-total {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: .5rem;
-  font-size: 1.15rem;
-  font-weight: 600;
+  font-size: 1.35rem;
+  font-weight: 700;
+  background: var(--ll-superficie);
+  border: 1px solid var(--ll-borde);
+  border-left: 3px solid currentColor;
+  border-radius: var(--ll-radio);
+  padding: .7rem .9rem;
   margin: 0 0 1rem;
 }
-.variacion-total--sube    { color: var(--pico-ins-color, #2a7); }
-.variacion-total--baja    { color: var(--pico-del-color, #c33); }
-.variacion-total--estable { color: var(--pico-muted-color); }
-.variacion-total .meta, .variacion-total .origen { font-weight: 400; font-size: .8rem; }
+.variacion-total--sube    { color: var(--ll-sube); }
+.variacion-total--baja    { color: var(--ll-baja); }
+.variacion-total--estable { color: var(--ll-texto-tenue); }
+.variacion-total .meta, .variacion-total .origen { font-weight: 400; font-size: .78rem; flex: 0 0 auto; }
+
+/* --- Avisos --- */
+.aviso-token, .aviso-error {
+  background: var(--ll-superficie);
+  border: 1px solid var(--ll-borde);
+  border-left: 3px solid var(--ll-aviso);
+  border-radius: var(--ll-radio);
+}
+
+/* --- Escritorio --- */
+@media (min-width: 768px) {
+  .jugadores { display: table; border-collapse: collapse; }
+  .jugadores thead {
+    position: static;
+    width: auto;
+    height: auto;
+    clip: auto;
+    display: table-header-group;
+  }
+  .jugadores th {
+    font-size: .7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--ll-texto-tenue);
+    border-bottom: 1px solid var(--borde);
+    padding: .5rem;
+  }
+  .jugadores tbody { display: table-row-group; }
+  .jugadores tr {
+    display: table-row;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    margin: 0;
+  }
+  .jugadores tbody tr:hover { background: var(--ll-superficie); }
+  .jugadores td {
+    display: table-cell;
+    width: auto;
+    vertical-align: top;
+    border-bottom: 1px solid var(--borde);
+    padding: .7rem .5rem;
+  }
+  .jugadores td::before { content: none; }
+  .jugadores td[data-etiqueta="Jugador"] { margin-bottom: 0; padding-bottom: .7rem; }
+  /* En tabla la franja lateral se pinta sobre la primera celda: `tr` no admite borde
+     con border-collapse. */
+  .jugadores tr.fichable { border-left: 0; }
+  .jugadores tr.fichable td:first-child { box-shadow: inset 3px 0 0 var(--ll-sube); padding-left: .75rem; }
+  .meta { display: block; }
+  .origen { margin-left: .4rem; white-space: nowrap; }
+  .prob { min-width: 4rem; }
+}
+
+@media (max-width: 767px) {
+  .filtros { flex-direction: column; align-items: stretch; }
+  .filtros select, .filtros button, .filtros a[role="button"] { width: 100%; flex: none; }
+  .cabecera__fila { padding-top: .55rem; padding-bottom: .55rem; }
+  .secciones { flex: 1 1 100%; }
+  .secciones a { padding: .35rem .55rem; font-size: .9rem; }
+}
