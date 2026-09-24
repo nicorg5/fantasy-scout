@@ -10,14 +10,14 @@ La retención se configura con `FANTASY_RETENCION_DIAS` (90 por defecto).
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from fantasy.config import obtener_config
-from fantasy.storage.fechas import fecha_local
-from fantasy.storage.modelos import SnapshotMercado
+from fantasy.storage.fechas import ahora_en_madrid, fecha_local
+from fantasy.storage.modelos import EventoUso, SnapshotMercado
 
 logger = logging.getLogger("fantasy.storage.retencion")
 
@@ -40,4 +40,26 @@ def purgar_snapshots_antiguos(
 
     if borrados:
         logger.info("purga de retención: %d snapshots anteriores a %s borrados", borrados, corte)
+    return borrados
+
+
+def purgar_eventos_uso(
+    sesion: Session, *, ahora: datetime | None = None, retencion_dias: int | None = None
+) -> int:
+    """Borra los eventos de uso más antiguos que la retención (specs/observabilidad, O21).
+
+    Misma retención que los snapshots, a propósito: una sola variable que entender. Aquí
+    además es una decisión de privacidad, no solo de espacio: son datos de qué mira cada
+    persona, y no hay motivo para guardarlos indefinidamente.
+    """
+    ahora = ahora or ahora_en_madrid()
+    dias = retencion_dias if retencion_dias is not None else obtener_config().retencion_dias
+    corte = ahora - timedelta(days=dias)
+
+    resultado = sesion.execute(delete(EventoUso).where(EventoUso.creado_en < corte))
+    borrados = resultado.rowcount or 0
+    sesion.commit()
+
+    if borrados:
+        logger.info("purga de retención: %d eventos de uso anteriores a %s borrados", borrados, corte)
     return borrados

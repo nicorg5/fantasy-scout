@@ -34,3 +34,6 @@ packages = ["src/fantasy"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "registro_real: el test necesita el registro de ejecuciones del cron de verdad (por defecto se neutraliza)",
+]

@@ -35,6 +35,7 @@ from fantasy.analytics.servicio import (
     scrapear_todo_para_guardar,
 )
 from fantasy.storage.analitica_repo import guardar_analitica_del_dia, purgar_analitica_antigua
+from fantasy.storage.ejecucion_repo import ResultadoEjecucion, registrar_ejecucion
 from fantasy.official.cliente import ClienteOficial
 from fantasy.official.errores import ErrorAPIOficial
 from fantasy.config import obtener_config
@@ -47,7 +48,7 @@ from fantasy.storage.modelos import (
     SnapshotMercado,
     Usuario,
 )
-from fantasy.storage.retencion import purgar_snapshots_antiguos
+from fantasy.storage.retencion import purgar_eventos_uso, purgar_snapshots_antiguos
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
@@ -138,12 +139,30 @@ def main() -> None:
     logger.info("ejecucion para %s (hora de Madrid: %s)", dia, ahora.strftime("%H:%M %Z"))
 
     fabrica = obtener_fabrica_sesiones()
+    resultado = ResultadoEjecucion(iniciado_en=ahora)
+
+    # `finally`, no la ultima linea: las ejecuciones que fallan son justo las que importan
+    # y este script puede morir con SystemExit(1) o con una excepcion (specs/observabilidad
+    # D7). `BaseException` para no perder tampoco el SystemExit; siempre se re-lanza.
+    try:
+        _ejecutar(fabrica, args, ahora, dia, resultado)
+    except BaseException as exc:
+        if resultado.error is None:
+            resultado.error = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+        raise
+    finally:
+        registrar_ejecucion(fabrica, resultado)
+
+
+def _ejecutar(fabrica, args, ahora, dia: date, resultado: ResultadoEjecucion) -> None:
+    """El cuerpo del job. Rellena `resultado` con lo que averigua por el camino."""
     with fabrica() as sesion:
         usuarios = _usuarios_con_credenciales(sesion, args.usuario)
         if not usuarios:
             logger.warning(
                 "ningun usuario con credenciales guardadas: el cron no puede autenticarse solo"
             )
+            resultado.snapshot_resultado = "sin_usuarios"
             return
 
         # --- 1. ANALITICA: se actualiza SIEMPRE ---
@@ -154,6 +173,7 @@ def main() -> None:
         tendencias, probabilidades = scrapear_todo_para_guardar()
         if tendencias:
             guardados = guardar_analitica_del_dia(sesion, dia, tendencias, probabilidades)
+            resultado.analitica_guardados = guardados
             logger.info("analitica diaria actualizada: %d jugadores", guardados)
         else:
             logger.warning("scraping caido: la analitica de hoy se queda como estaba")
@@ -163,28 +183,35 @@ def main() -> None:
         # Historico del mercado. A diferencia de la analitica, no tiene sentido
         # recapturarlo: el mercado no cambia hasta el cierre siguiente.
         if _ya_hay_snapshot(sesion, dia):
+            resultado.snapshot_resultado = "ya_existia"
             logger.info("ya existe snapshot de mercado de %s; solo se actualizo la analitica", dia)
         elif not args.forzar_hora and not mercado_ya_cerro(ahora):
+            resultado.snapshot_resultado = "mercado_abierto"
             logger.info(
                 "el mercado aun no ha cerrado (18:00 Madrid): no se guarda snapshot, "
                 "pero la analitica si se ha actualizado"
             )
         else:
-            _guardar_snapshot_de_mercado(sesion, usuarios, dia)
+            _guardar_snapshot_de_mercado(sesion, usuarios, dia, resultado)
 
         # --- 3. Purga de retencion ---
         borrados = purgar_snapshots_antiguos(sesion)
         borrados_analitica = purgar_analitica_antigua(
             sesion, dia, obtener_config().retencion_dias
         )
-        if borrados or borrados_analitica:
+        # Eventos de uso de la web (specs/observabilidad, O21): colgados de este mismo job
+        # para no mantener un cron mas, igual que las purgas de arriba.
+        borrados_uso = purgar_eventos_uso(sesion)
+        if borrados or borrados_analitica or borrados_uso:
             logger.info(
-                "purga de retencion: %d snapshots y %d filas de analitica",
-                borrados, borrados_analitica,
+                "purga de retencion: %d snapshots, %d filas de analitica y %d eventos de uso",
+                borrados, borrados_analitica, borrados_uso,
             )
 
 
-def _guardar_snapshot_de_mercado(sesion: Session, usuarios: list[Usuario], dia: date) -> None:
+def _guardar_snapshot_de_mercado(
+    sesion: Session, usuarios: list[Usuario], dia: date, resultado: ResultadoEjecucion
+) -> None:
     """Guarda la foto del mercado del dia. El mercado es el mismo para toda la liga, asi
     que basta con el primer usuario cuyo token funcione."""
     for usuario in usuarios:
@@ -209,9 +236,16 @@ def _guardar_snapshot_de_mercado(sesion: Session, usuarios: list[Usuario], dia: 
             escritos, con_analitica, escritos - con_analitica,
         )
         logger.info("matching: %d jugadores sin emparejar", analitica.sin_emparejar)
+        # R27: este es el dato que el MVP pedia vigilar y que hasta ahora solo se logueaba.
+        resultado.snapshot_resultado = "guardado"
+        resultado.jugadores_escritos = escritos
+        resultado.con_analitica = con_analitica
+        resultado.sin_emparejar = analitica.sin_emparejar
         return
 
     logger.error("ningun usuario pudo leer el mercado; no se ha guardado el snapshot")
+    resultado.snapshot_resultado = "error"
+    resultado.error = "ningun usuario pudo leer el mercado"
     raise SystemExit(1)
 
 
