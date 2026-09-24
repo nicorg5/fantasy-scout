@@ -93,6 +93,7 @@ No hay registro público: las cuentas se crean con el script.
 | `TOKEN_ENCRYPTION_KEY` | **Cifra** el token y las credenciales de LaLiga (Fernet). Si cambia, lo guardado deja de poder descifrarse |
 | `SESSION_SECRET` | **Firma** la cookie de sesión. Rotarla solo cierra las sesiones abiertas |
 | `FANTASY_CONTACTO` | Contacto que se incluye en el User-Agent al scrapear |
+| `FANTASY_ADMIN_EMAIL` | Única cuenta que ve el panel `/uso`. Sin ella, `/uso` da 404 a todos |
 
 Genera las dos claves con:
 
@@ -115,7 +116,7 @@ La app necesita un *bearer token* de LaLiga Fantasy, que **caduca cada 24 horas*
 ## Tests
 
 ```bash
-uv run pytest              # 120 tests
+uv run pytest
 ```
 
 Los tests corren contra el Postgres local, **nunca contra producción**: crean y borran
@@ -124,13 +125,14 @@ datos. Las fixtures salen de respuestas reales anonimizadas
 
 ## Despliegue
 
-Tres piezas, todas en plan gratuito:
+Cuatro piezas, todas en plan gratuito:
 
 | Pieza | Dónde | Por qué |
 |---|---|---|
 | Web | Render (`render.yaml`) | Deploy automático desde `main` |
 | Postgres | Neon | No caduca ni pausa por inactividad |
 | Job diario | GitHub Actions | Render no incluye cron jobs en el plan free |
+| Vigilancia diaria | GitHub Actions | Único canal de aviso: si algo falla, GitHub manda un email |
 
 El job corre **dos veces** (16:30 y 17:30 UTC) a propósito: el cron se define en UTC y
 Madrid alterna CET/CEST, así que una sola hora se desfasaría media temporada. El disparo
@@ -195,7 +197,25 @@ merge: con un único desarrollador basta con ver el resultado antes de mergear.
 | `construir_mapa_equipos.py` | Regenera el puente de IDs de equipo entre fuentes |
 | `construir_mapeo.py` | Empareja jugadores y reporta los no emparejados |
 | `snapshot_diario.py` | El job del cron |
+| `vigilancia.py` | Comprueba la salud cada mañana; sale en rojo si algo falla |
 | `pre_deploy.sh` | Comprobaciones antes de desplegar |
+
+## Observabilidad
+
+La app registra su propio uso para responder tres preguntas: **quién entra, qué mira y
+cuánto rato se queda**. Todo se queda en la propia base de datos, sin terceros.
+
+- **Registro**: un middleware guarda una fila por navegación en `evento_uso` (usuario, ruta,
+  duración, estado). Solo la plantilla de ruta, nunca la URL con sus parámetros. Nunca
+  ralentiza ni rompe una respuesta: se escribe después de enviarla.
+- **Panel `/uso`**: solo para `FANTASY_ADMIN_EMAIL`, que ve además el enlace en el menú.
+  Usuarios activos, sesiones, secciones, velocidad por ruta, login de LaLiga y cron.
+- **Vigilancia**: cada mañana, `vigilancia.py` comprueba que el cron corre, que se guarda el
+  snapshot, que la cobertura del emparejamiento no se desploma y que el login automático
+  de LaLiga no falla. Si algo va mal, el workflow queda en rojo y GitHub manda un email.
+
+Los eventos se purgan a los `FANTASY_RETENCION_DIAS` (90 por defecto). Diseño completo en
+`specs/observabilidad/`.
 
 ## Sobre el scraping
 
