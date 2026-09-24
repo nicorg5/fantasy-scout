@@ -15,6 +15,7 @@ from sqlalchemy import (
     Enum,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     UniqueConstraint,
@@ -264,3 +265,107 @@ class AnaliticaDiaria(Base):
 
     origen: Mapped[str] = mapped_column(String(64), nullable=False)
     capturado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class TipoEvento(enum.Enum):
+    """Qué clase de cosa hizo el usuario. Dos valores y estables: una petición o es una
+    pantalla que se abre, o es un botón que se pulsa."""
+
+    NAVEGACION = "navegacion"
+    ACCION = "accion"
+
+
+class EventoUso(Base):
+    """Una fila por cada cosa que alguien hace en la app (ver specs/observabilidad).
+
+    **Qué NO se guarda, y no por descuido** (design.md §Riesgo específico: datos
+    personales): ni IP, ni User-Agent, ni cuerpo de la petición, ni la query string. La
+    columna `ruta` guarda la *plantilla* de ruta (`/clausulas`), nunca la URL real
+    (`/clausulas?manager=pepe`): así es estructuralmente imposible que un secreto acabe
+    aquí, en vez de depender de acordarse de filtrarlo (design.md §D4).
+
+    `user_id` es **nullable** a propósito: una petición sin sesión válida se registra con
+    su 302 y sin usuario, en vez de inventarse uno (O9). Y `ON DELETE SET NULL` para que
+    borrar una cuenta no arrastre su histórico ni haga fallar el borrado.
+
+    No hay columna `sesion_id`: las sesiones se **derivan al consultar** agrupando por
+    huecos de más de 30 minutos (design.md §D5). Así el umbral sigue siendo una decisión
+    revisable, no un número congelado el día que se escribió la fila.
+
+    Es telemetría, no contabilidad: perder eventos es aceptable, ralentizar una respuesta
+    por escribirlos no lo es.
+    """
+
+    __tablename__ = "evento_uso"
+    __table_args__ = (
+        # Las dos formas en que se consulta: "qué hizo esta persona" y "qué pasó estos
+        # días". Sin ellas, /uso hace seq scan sobre toda la tabla en cada carga.
+        Index("ix_evento_uso_usuario_fecha", "user_id", "creado_en"),
+        Index("ix_evento_uso_fecha", "creado_en"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id", ondelete="SET NULL"), nullable=True
+    )
+
+    ruta: Mapped[str] = mapped_column(String(128), nullable=False)
+    tipo: Mapped[TipoEvento] = mapped_column(
+        Enum(TipoEvento, name="tipo_evento", values_callable=lambda e: [m.value for m in e]),
+        nullable=False,
+    )
+    # Conjunto cerrado (O4), pero validado en código y no como Enum de Postgres: las
+    # acciones se añaden al ritmo de la UI y no compensa una migración por cada botón
+    # nuevo. `tipo`, en cambio, sí es enum: tiene dos valores y no va a crecer.
+    accion: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    duracion_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    estado_http: Mapped[int] = mapped_column(Integer, nullable=False)
+    creado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class EjecucionCron(Base):
+    """Una fila por cada ejecución de `snapshot_diario.py` (specs/observabilidad, D7).
+
+    Existe porque hoy una ejecución solo deja rastro en el log de GitHub Actions, que
+    caduca y no se puede consultar. Aquí quedan los contadores que el script **ya calcula**
+    y hasta ahora tiraba, en particular `sin_emparejar`: el dato que R27 del MVP pedía
+    vigilar ("una subida brusca avisa de que algo se rompió upstream") y nadie vigilaba.
+
+    Se escribe en un `finally`: las ejecuciones que fallan son justo las que importan, y si
+    el registro fuera la última línea de `main()` no dejarían rastro.
+
+    `snapshot_resultado` es texto validado en código (ver `RESULTADOS_SNAPSHOT`) y no un
+    ENUM de Postgres: los desenlaces posibles pueden crecer, y así no hay tipo que
+    sobreviva a un `downgrade`.
+    """
+
+    __tablename__ = "ejecucion_cron"
+    __table_args__ = (Index("ix_ejecucion_cron_inicio", "iniciado_en"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    iniciado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    terminado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Cuántos jugadores se guardaron en `analitica_diaria`. Nulo si el scraping cayó y no
+    # se llegó a guardar nada: distinto de 0, y por eso no se rellena con 0 (invariante 2).
+    analitica_guardados: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    snapshot_resultado: Mapped[str] = mapped_column(String(32), nullable=False)
+    jugadores_escritos: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    con_analitica: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sin_emparejar: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    error: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+# Desenlaces posibles del bloque "snapshot de mercado" de una ejecución.
+RESULTADOS_SNAPSHOT = frozenset({
+    "guardado",          # se capturó el mercado
+    "ya_existia",        # ya había snapshot de hoy (idempotencia, R41)
+    "mercado_abierto",   # aún no son las 18:00 en Madrid (guardia, R42)
+    "sin_usuarios",      # ningún usuario con credenciales guardadas
+    "error",             # excepción o ningún usuario pudo leer el mercado
+})
