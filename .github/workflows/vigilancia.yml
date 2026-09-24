@@ -1,0 +1,61 @@
+# Vigilancia diaria de fantasy-scout (specs/observabilidad, O19).
+#
+# Es el ÚNICO canal de aviso del proyecto: si el script sale con código ≠ 0, este workflow
+# queda en rojo y GitHub manda el email de "workflow fallido". No hay más infraestructura de
+# alertas que esa, a propósito.
+#
+# Qué vigila (detalle en src/fantasy/observabilidad/vigilancia.py):
+#   1. El cron del snapshot ha terminado bien al menos una vez en 24 h.
+#   2. Se ha guardado un snapshot de mercado en las últimas 36 h.
+#   3. La cobertura del emparejamiento no ha caído más de 15 puntos (R27 del MVP).
+#   4. Ningún usuario tiene el login automático de LaLiga fallando.
+#
+# HORA: 06:00 UTC (07:00 / 08:00 en Madrid), bastante después del último disparo del cron
+# (01:00 UTC), con margen para los retrasos de GitHub Actions (se han visto de 2 h).
+#
+# OJO: GitHub solo ejecuta workflows programados desde la rama por defecto (`main`). Hasta
+# que esto no esté mergeado, no correrá ni aparecerá en "Run workflow".
+name: Vigilancia diaria
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      forzar_alerta:
+        description: "Forzar el rojo para comprobar que llega el email"
+        type: boolean
+        default: false
+
+concurrency:
+  group: vigilancia
+  cancel-in-progress: false
+
+jobs:
+  vigilancia:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Instalar dependencias
+        run: uv sync --frozen
+
+      - name: Vigilar
+        env:
+          # Solo lee de la base de datos: no necesita TOKEN_ENCRYPTION_KEY.
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          FANTASY_ENTORNO: produccion
+        run: |
+          if [ "${{ inputs.forzar_alerta }}" = "true" ]; then
+            # Un umbral negativo hace saltar la cobertura en cuanto haya un solo dato, y
+            # 0 h sin snapshot hace saltar la condición 2 siempre.
+            uv run python scripts/vigilancia.py --caida-cobertura -1 --horas-sin-snapshot 0
+          else
+            uv run python scripts/vigilancia.py
+          fi
