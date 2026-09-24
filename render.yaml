@@ -29,5 +29,7 @@ services:
         value: produccion      # activa Secure en la cookie de sesión (hay HTTPS)
       - key: FANTASY_CONTACTO
         value: mailto:nicolas.rdguezgomez@gmail.com
+      - key: FANTASY_ADMIN_EMAIL
+        sync: false            # única cuenta que ve /uso; sin ella, /uso da 404 a todos
       - key: PYTHON_VERSION
         value: "3.12"

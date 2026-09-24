@@ -33,6 +33,11 @@
           <li><a href="/mercado" {% if ruta.startswith('/mercado') %}aria-current="page"{% endif %}>Mercado</a></li>
           <li><a href="/clausulas" {% if ruta.startswith('/clausulas') %}aria-current="page"{% endif %}>Clausulazos</a></li>
           <li><a href="/token" {% if ruta.startswith('/token') %}aria-current="page"{% endif %}>Token</a></li>
+          {# Solo lo ve FANTASY_ADMIN_EMAIL. Ocultarlo es comodidad, no seguridad: /uso
+             devuelve 404 a cualquier otro aunque escriba la URL (specs/observabilidad). #}
+          {% if request and es_admin(request) %}
+          <li><a href="/uso" {% if ruta.startswith('/uso') %}aria-current="page"{% endif %}>Uso</a></li>
+          {% endif %}
         </ul>
       </nav>
       <span id="cargando-nav" class="htmx-indicator cargando">Cargando…</span>

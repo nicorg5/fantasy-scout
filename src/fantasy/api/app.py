@@ -21,6 +21,9 @@ from fantasy.analytics.servicio import (
 from fantasy.auth.dependencias import NoAutenticado, usuario_actual
 from fantasy.auth.rutas import montar_templates
 from fantasy.auth.rutas import router as auth_router
+from fantasy.observabilidad.middleware import registrar_uso
+from fantasy.observabilidad.rutas import montar_templates as montar_templates_uso
+from fantasy.observabilidad.rutas import router as uso_router
 from fantasy.official.errores import ErrorAPIOficial, TokenInvalido
 from fantasy.storage.engine import obtener_sesion
 from fantasy.storage.modelos import Usuario
@@ -31,10 +34,15 @@ DIRECTORIO_API = Path(__file__).parent
 TEMPLATES = Jinja2Templates(directory=str(DIRECTORIO_API / "templates"))
 TEMPLATES.env.filters["euros"] = formatear_euros
 montar_templates(TEMPLATES)
+montar_templates_uso(TEMPLATES)
 
 app = FastAPI(title="fantasy-scout", docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=str(DIRECTORIO_API / "static")), name="static")
 app.include_router(auth_router)
+app.include_router(uso_router)
+# Registro de uso (specs/observabilidad). Va como middleware para que ninguna ruta pueda
+# quedarse fuera por olvido; un fallo suyo nunca altera la respuesta.
+app.middleware("http")(registrar_uso)
 
 
 @app.exception_handler(NoAutenticado)

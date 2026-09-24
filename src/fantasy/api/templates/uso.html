@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{# Panel de observabilidad (specs/observabilidad). Solo lo ve FANTASY_ADMIN_EMAIL.
+   Regla de toda la pantalla (O18, invariante nº 2): un bloque sin datos dice "sin datos
+   todavía"; nunca pinta un 0 que se lea como "no ha entrado nadie". #}
+{% block contenido %}
+<h1>Uso de la app</h1>
+
+<nav class="periodo" aria-label="Periodo">
+  {% for p in periodos %}
+  <a href="/uso?dias={{ p }}" {% if p == dias %}aria-current="page"{% endif %}>Últimos {{ p }} días</a>
+  {% endfor %}
+</nav>
+
+{# --- Salud: lo mismo que decide el email de la mañana --- #}
+<section aria-labelledby="t-salud">
+  <h2 id="t-salud">Salud</h2>
+  <ul class="comprobaciones">
+    {% for c in comprobaciones %}
+    <li class="comprobacion comprobacion--{{ 'ok' if c.ok else 'alerta' }}">
+      <strong>{{ 'OK' if c.ok else 'ALERTA' }} · {{ c.nombre }}</strong>
+      <span>{{ c.detalle }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+
+{# --- Producto: las tres preguntas --- #}
+<section aria-labelledby="t-usuarios">
+  <h2 id="t-usuarios">Quién entra</h2>
+  <div class="indicadores">
+    <div class="indicador"><span class="indicador__valor">{{ activos.hoy }}</span><span class="indicador__etiqueta">hoy</span></div>
+    <div class="indicador"><span class="indicador__valor">{{ activos.ultimos_7_dias }}</span><span class="indicador__etiqueta">últimos 7 días</span></div>
+    <div class="indicador"><span class="indicador__valor">{{ activos.ultimos_30_dias }}</span><span class="indicador__etiqueta">últimos 30 días</span></div>
+  </div>
+  <p class="meta">Personas distintas con sesión iniciada. Días de Madrid.</p>
+</section>
+
+<section aria-labelledby="t-sesiones">
+  <h2 id="t-sesiones">Cuánto rato se quedan</h2>
+  {% if resumen.total %}
+  <div class="indicadores">
+    <div class="indicador"><span class="indicador__valor">{{ resumen.total }}</span><span class="indicador__etiqueta">sesiones</span></div>
+    <div class="indicador"><span class="indicador__valor">{{ resumen.mediana | duracion }}</span><span class="indicador__etiqueta">mediana</span></div>
+    <div class="indicador"><span class="indicador__valor">{{ resumen.p95 | duracion }}</span><span class="indicador__etiqueta">p95</span></div>
+    <div class="indicador"><span class="indicador__valor">{{ resumen.de_una_pagina }}</span><span class="indicador__etiqueta">de una sola página</span></div>
+  </div>
+  <p class="meta">Una sesión termina tras 30 min sin actividad. Las de una sola página tienen
+  duración <strong>desconocida</strong> (se sabe cuándo llegó, no cuándo se fue): se cuentan
+  aparte y no entran en la mediana.</p>
+  {% else %}
+  <p class="sin-datos">Sin datos todavía.</p>
+  {% endif %}
+</section>
+
+<section aria-labelledby="t-secciones">
+  <h2 id="t-secciones">Qué miran</h2>
+  {% if navegaciones %}
+  <table class="jugadores tabla-uso">
+    <thead><tr><th>Sección</th><th>Visitas</th><th>Reparto</th></tr></thead>
+    <tbody>
+      {% for u in navegaciones %}
+      <tr>
+        <td class="celda-principal" data-etiqueta="Sección">{{ u.ruta | nombre_ruta }}</td>
+        <td data-etiqueta="Visitas">{{ u.veces }}</td>
+        <td data-etiqueta="Reparto">
+          {% set pct = (100 * u.veces / total_navegaciones) | round | int %}
+          <span class="reparto"><span class="reparto__barra" style="--pct: {{ pct }}%"></span>{{ pct }}%</span>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="sin-datos">Sin datos todavía.</p>
+  {% endif %}
+
+  {% if acciones %}
+  <h3>Botones</h3>
+  <ul class="lista-simple">
+    {% for a in acciones %}
+    <li>{{ nombres_accion.get(a.accion, a.accion) }} en {{ a.ruta | nombre_ruta }}: <strong>{{ a.veces }}</strong></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+
+<section aria-labelledby="t-personas">
+  <h2 id="t-personas">Por persona</h2>
+  <table class="jugadores tabla-uso">
+    <thead><tr><th>Cuenta</th><th>Última visita</th><th>Sesiones</th><th>Sección favorita</th></tr></thead>
+    <tbody>
+      {% for u in usuarios %}
+      <tr>
+        <td class="celda-principal" data-etiqueta="Cuenta">{{ u.email }}</td>
+        <td data-etiqueta="Última visita"><span title="{{ u.ultima_visita | madrid }}">{{ u.ultima_visita | hace }}</span></td>
+        <td data-etiqueta="Sesiones">{{ u.sesiones }}</td>
+        <td data-etiqueta="Sección favorita">{{ u.seccion_favorita | nombre_ruta }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{# --- Salud técnica en detalle --- #}
+<section aria-labelledby="t-latencia">
+  <h2 id="t-latencia">Velocidad y errores</h2>
+  {% if latencias %}
+  <table class="jugadores tabla-uso">
+    <thead><tr><th>Ruta</th><th>Peticiones</th><th>p50</th><th>p95</th><th>Errores 5xx</th></tr></thead>
+    <tbody>
+      {% for l in latencias %}
+      <tr>
+        <td class="celda-principal" data-etiqueta="Ruta">{{ l.ruta }}</td>
+        <td data-etiqueta="Peticiones">{{ l.peticiones }}</td>
+        <td data-etiqueta="p50">{{ l.p50_ms | round | int }} ms</td>
+        <td data-etiqueta="p95">{{ l.p95_ms | round | int }} ms</td>
+        <td data-etiqueta="Errores 5xx" {% if l.errores_5xx %}class="valor-alerta"{% endif %}>{{ l.errores_5xx }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="meta">Si el p95 se dispara y el p50 no, suele ser el arranque en frío de Render
+  (el plan gratuito duerme el servicio): no es un problema del código.</p>
+  {% else %}
+  <p class="sin-datos">Sin datos todavía.</p>
+  {% endif %}
+</section>
+
+<section aria-labelledby="t-login">
+  <h2 id="t-login">Login automático de LaLiga</h2>
+  {% if tokens %}
+  <table class="jugadores tabla-uso">
+    <thead><tr><th>Cuenta</th><th>Última renovación</th><th>Estado</th></tr></thead>
+    <tbody>
+      {% for t in tokens %}
+      <tr>
+        <td class="celda-principal" data-etiqueta="Cuenta">{{ t.email }}</td>
+        <td data-etiqueta="Última renovación"><span title="{{ t.ultimo_login_ok | madrid }}">{{ t.ultimo_login_ok | hace }}</span></td>
+        <td data-etiqueta="Estado" {% if t.ultimo_error %}class="valor-alerta"{% endif %}>{{ t.ultimo_error or 'OK' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="meta">El token solo se renueva cuando alguien lo necesita: una renovación antigua
+  sin error no significa nada roto, solo que esa persona no ha entrado.</p>
+  {% else %}
+  <p class="sin-datos">Ninguna cuenta tiene el login automático activado.</p>
+  {% endif %}
+</section>
+
+<section aria-labelledby="t-cron">
+  <h2 id="t-cron">Cron diario</h2>
+  <h3>Cobertura del emparejamiento</h3>
+  {% if cobertura %}
+  <table class="jugadores tabla-uso">
+    <thead><tr><th>Día</th><th>Cobertura</th><th>Jugadores</th><th>Sin emparejar</th></tr></thead>
+    <tbody>
+      {% for c in cobertura %}
+      <tr>
+        <td class="celda-principal" data-etiqueta="Día">{{ c.fecha.strftime('%d/%m/%Y') }}</td>
+        <td data-etiqueta="Cobertura">{% if c.porcentaje is not none %}{{ c.porcentaje | round | int }}%{% else %}sin dato{% endif %}</td>
+        <td data-etiqueta="Jugadores">{{ c.jugadores }}</td>
+        <td data-etiqueta="Sin emparejar">{{ c.sin_emparejar if c.sin_emparejar is not none else 'sin dato' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="sin-datos">Sin datos todavía: se mide en las ejecuciones que guardan el snapshot de mercado.</p>
+  {% endif %}
+
+  <h3>Últimas ejecuciones</h3>
+  {% if ejecuciones %}
+  <table class="jugadores tabla-uso">
+    <thead><tr><th>Inicio</th><th>Snapshot</th><th>Analítica</th><th>Error</th></tr></thead>
+    <tbody>
+      {% for e in ejecuciones %}
+      <tr>
+        <td class="celda-principal" data-etiqueta="Inicio">{{ e.iniciado_en | madrid }}</td>
+        <td data-etiqueta="Snapshot" {% if e.snapshot_resultado == 'error' %}class="valor-alerta"{% endif %}>{{ e.snapshot_resultado }}</td>
+        <td data-etiqueta="Analítica">{% if e.analitica_guardados is not none %}{{ e.analitica_guardados }} jugadores{% else %}no guardada{% endif %}</td>
+        <td data-etiqueta="Error">{{ e.error or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="sin-datos">Sin datos todavía.</p>
+  {% endif %}
+</section>
+{% endblock %}

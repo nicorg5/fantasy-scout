@@ -217,13 +217,15 @@ main h1 + p { color: var(--ll-texto-tenue); font-size: .95rem; }
 }
 
 /* El nombre manda: ocupa la fila entera y se separa del resto. */
-.jugadores td[data-etiqueta="Jugador"] {
+.jugadores td[data-etiqueta="Jugador"],
+.jugadores td.celda-principal {
   grid-column: 1 / -1;
   border-bottom: 1px solid var(--borde);
   padding-bottom: .6rem;
   margin-bottom: .15rem;
 }
-.jugadores td[data-etiqueta="Jugador"]::before { content: none; }
+.jugadores td[data-etiqueta="Jugador"]::before,
+.jugadores td.celda-principal::before { content: none; }
 
 .jugador-nombre {
   font-size: 1.05rem;
@@ -429,6 +431,65 @@ main h1 + p { color: var(--ll-texto-tenue); font-size: .95rem; }
   border-radius: var(--ll-radio);
 }
 
+/* --- Panel /uso (specs/observabilidad) --- */
+.periodo { display: flex; gap: .5rem; margin-bottom: 1.5rem; }
+.periodo a {
+  padding: .3rem .7rem;
+  border: 1px solid var(--ll-borde);
+  border-radius: var(--ll-radio-chico);
+  color: var(--ll-texto-tenue);
+  text-decoration: none;
+  font-size: .9rem;
+}
+.periodo a[aria-current="page"] { color: var(--ll-texto); border-color: var(--ll-acento); }
+
+.comprobaciones { list-style: none; padding: 0; margin: 0; }
+.comprobacion {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
+  background: var(--ll-superficie);
+  border: 1px solid var(--ll-borde);
+  border-left: 3px solid var(--ll-sube);
+  border-radius: var(--ll-radio);
+  padding: .6rem .9rem;
+  margin-bottom: .5rem;
+}
+.comprobacion--alerta { border-left-color: var(--ll-baja); }
+.comprobacion--alerta strong { color: var(--ll-baja); }
+.comprobacion--ok strong { color: var(--ll-sube); }
+
+.indicadores {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: .75rem;
+  margin-bottom: .5rem;
+}
+.indicador {
+  display: flex;
+  flex-direction: column;
+  background: var(--ll-superficie);
+  border: 1px solid var(--ll-borde);
+  border-radius: var(--ll-radio);
+  padding: .8rem 1rem;
+}
+.indicador__valor { font-size: 1.6rem; font-weight: 700; color: var(--ll-texto); line-height: 1.1; }
+.indicador__etiqueta { font-size: .75rem; color: var(--ll-texto-tenue); text-transform: uppercase; letter-spacing: .05em; }
+
+.reparto { display: inline-flex; align-items: center; gap: .5rem; min-width: 8rem; }
+.reparto__barra {
+  flex: 1 1 5rem;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right, var(--ll-acento) var(--pct), var(--ll-superficie-alta) var(--pct));
+}
+
+.valor-alerta { color: var(--ll-baja); font-weight: 600; }
+.sin-datos { color: var(--ll-texto-tenue); font-style: italic; }
+.lista-simple { padding-left: 1.1rem; }
+.tabla-uso { margin-bottom: 1rem; }
+
 /* --- Escritorio --- */
 @media (min-width: 768px) {
   .jugadores { display: table; border-collapse: collapse; }
@@ -466,7 +527,8 @@ main h1 + p { color: var(--ll-texto-tenue); font-size: .95rem; }
     padding: .7rem .5rem;
   }
   .jugadores td::before { content: none; }
-  .jugadores td[data-etiqueta="Jugador"] { margin-bottom: 0; padding-bottom: .7rem; }
+  .jugadores td[data-etiqueta="Jugador"],
+  .jugadores td.celda-principal { margin-bottom: 0; padding-bottom: .7rem; }
   /* En tabla la franja lateral se pinta sobre la primera celda: `tr` no admite borde
      con border-collapse. */
   .jugadores tr.fichable { border-left: 0; }
