@@ -17,7 +17,7 @@ uv run pytest tests/test_rutas.py::test_nombre -q   # un solo test
 uv run alembic revision --autogenerate -m "mensaje"
 
 bash scripts/pre_deploy.sh           # comprobaciones antes de mergear a main
-uv run python scripts/crear_usuario.py --email tu@email.com
+uv run python scripts/crear_usuario.py --email tu@email.com   # puerta trasera: el alta normal es por invitación
 uv run python scripts/snapshot_diario.py            # el job del cron
 ```
 
@@ -83,7 +83,18 @@ Cuatro invariantes que explican casi todo el código y **no deben romperse**:
 
 Errores esperados en las rutas: un token de LaLiga caducado (dura 24 h) es **evento normal**,
 se responde 200 con aviso y enlace a `/token`, nunca un 500. Ver `_pagina_de_jugadores` y
-`_fragmento_tabla` en [app.py](src/fantasy/api/app.py).
+`_fragmento_tabla` en [app.py](src/fantasy/api/app.py). Los avisos no dicen "token": los
+usuarios no son técnicos (`_aviso_token`).
+
+### Alta y admin
+
+- **Alta por invitación de un solo uso** (`specs/registro/`): el admin crea el enlace en
+  `/invitaciones`; `/registro` valida contra LaLiga y crea usuario, credenciales, token e
+  invitación usada **en una sola transacción** (`auth/alta.py`). La contraseña de la app
+  es la de LaLiga; los emails se guardan siempre con `normalizar_email()`.
+- El admin es `FANTASY_ADMIN_EMAIL` (`auth/admin.py`). Una pantalla de admin nueva usa la
+  dependencia `administrador`: a quien no lo es se le redirige a `/plantilla`, **nunca**
+  un 404 ni un 403, y su enlace va dentro de `es_admin(request)` en `base.html`.
 
 ### htmx
 

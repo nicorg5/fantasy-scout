@@ -76,14 +76,21 @@ docker compose up -d              # Postgres en el puerto 5433
 cp .env.example .env              # y rellena los valores (ver más abajo)
 uv run alembic upgrade head
 
-# 3. Tu cuenta
+# 3. Tu cuenta (la primera, la del admin)
 uv run python scripts/crear_usuario.py --email tu@email.com
 
 # 4. Arrancar
 uv run uvicorn fantasy.api.app:app --reload    # http://localhost:8000
 ```
 
-No hay registro público: las cuentas se crean con el script.
+No hay registro público: **se entra por invitación**. El admin (`FANTASY_ADMIN_EMAIL`)
+crea un enlace en la pestaña **Invitación** y lo manda por el canal que quiera. Cada enlace
+sirve para una sola alta y caduca a los 7 días. Quien lo abre solo pone su email y
+contraseña de LaLiga Fantasy: se validan contra LaLiga, se crea su cuenta ya conectada y
+entra directamente en su plantilla. Para entrar después usa esos mismos datos.
+
+El script sigue sirviendo como puerta trasera. Contra producción, con
+`uv run --env-file .env.produccion python scripts/crear_usuario.py --email ...`.
 
 ### Variables de entorno
 
@@ -93,7 +100,7 @@ No hay registro público: las cuentas se crean con el script.
 | `TOKEN_ENCRYPTION_KEY` | **Cifra** el token y las credenciales de LaLiga (Fernet). Si cambia, lo guardado deja de poder descifrarse |
 | `SESSION_SECRET` | **Firma** la cookie de sesión. Rotarla solo cierra las sesiones abiertas |
 | `FANTASY_CONTACTO` | Contacto que se incluye en el User-Agent al scrapear |
-| `FANTASY_ADMIN_EMAIL` | Única cuenta que ve el panel `/uso`. Sin ella, `/uso` da 404 a todos |
+| `FANTASY_ADMIN_EMAIL` | Única cuenta que ve **Uso** e **Invitación**. A cualquier otro se le devuelve a su plantilla. Sin ella, nadie es admin |
 
 Genera las dos claves con:
 
@@ -105,9 +112,13 @@ uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_
 
 La app necesita un *bearer token* de LaLiga Fantasy, que **caduca cada 24 horas**. Dos vías:
 
-- **Automática** (recomendada): en `/token`, introduces tu email y contraseña de LaLiga.
-  Se guardan cifradas y la app renueva el token sola. Es lo que hace viable el job diario.
-- **Manual**: pegas el token a mano en `/token`. Toca repetirlo cada día.
+- **Automática** (recomendada): quien entra por invitación ya la tiene. Si no, en
+  **Cuenta** (`/token`) introduces tu email y contraseña de LaLiga. Se guardan cifradas y
+  la app renueva el token sola. Es lo que hace viable el job diario.
+- **Manual**: plegada como "Opción avanzada" en la misma pantalla. Toca repetirlo cada día.
+
+Si cambias la contraseña en LaLiga, entra en la app con la nueva: se comprueba contra LaLiga
+y se actualiza sola.
 
 > La vía automática guarda tu contraseña de LaLiga **cifrada, pero de forma reversible**
 > (hay que enviársela a LaLiga para renovar). Si la base de datos se compromete, esa
@@ -191,7 +202,7 @@ merge: con un único desarrollador basta con ver el resultado antes de mergear.
 
 | Script | Para qué |
 |---|---|
-| `crear_usuario.py` | Alta manual de una cuenta |
+| `crear_usuario.py` | Alta manual de una cuenta (puerta trasera; lo normal es la invitación) |
 | `guardar_credenciales_laliga.py` | Conectar una cuenta de LaLiga desde la terminal |
 | `recon_oficial.py` | Guarda respuestas crudas de la API en `data/raw/` |
 | `construir_mapa_equipos.py` | Regenera el puente de IDs de equipo entre fuentes |
@@ -209,6 +220,7 @@ cuánto rato se queda**. Todo se queda en la propia base de datos, sin terceros.
   duración, estado). Solo la plantilla de ruta, nunca la URL con sus parámetros. Nunca
   ralentiza ni rompe una respuesta: se escribe después de enviarla.
 - **Panel `/uso`**: solo para `FANTASY_ADMIN_EMAIL`, que ve además el enlace en el menú.
+  Los demás no lo ven, y si escriben la URL vuelven a su plantilla.
   Usuarios activos, sesiones, secciones, velocidad por ruta, login de LaLiga y cron.
 - **Vigilancia**: cada mañana, `vigilancia.py` comprueba que el cron corre, que se guarda el
   snapshot, que la cobertura del emparejamiento no se desploma y que el login automático
