@@ -2,62 +2,27 @@
 
 from __future__ import annotations
 
-import uuid
-
 import pytest
-from fastapi.testclient import TestClient
-
-from fantasy.api.app import app
-from fantasy.auth.passwords import hashear_password
-from fantasy.config import obtener_config
-from fantasy.storage.modelos import Usuario
-
-
-@pytest.fixture
-def admin_es(monkeypatch):
-    """Fija `FANTASY_ADMIN_EMAIL` para el test. La config está cacheada, así que hay que
-    vaciar la caché al entrar y al salir para que el resto de la suite no la herede."""
-
-    def _fijar(email: str) -> None:
-        monkeypatch.setenv("FANTASY_ADMIN_EMAIL", email)
-        obtener_config.cache_clear()
-
-    yield _fijar
-    obtener_config.cache_clear()
-
-
-@pytest.fixture
-def otro_cliente(sesion_db):
-    """Un segundo usuario con su propia sesión: el que NO es administrador."""
-    email, password = f"otro-{uuid.uuid4().hex[:8]}@example.com", "otra-password-123"
-    usuario = Usuario(email=email, password_hash=hashear_password(password))
-    sesion_db.add(usuario)
-    sesion_db.commit()
-
-    cliente = TestClient(app)
-    assert cliente.post("/login", data={"email": email, "password": password}, follow_redirects=False).status_code == 302
-    yield cliente
-
-    sesion_db.delete(sesion_db.get(Usuario, usuario.id))
-    sesion_db.commit()
 
 
 def test_el_admin_ve_el_panel(cliente_autenticado, usuario_de_prueba, admin_es):
     usuario, _ = usuario_de_prueba
     admin_es(usuario.email.upper())  # mayúsculas en la variable: no debe importar
 
-    assert cliente_autenticado.get("/uso").status_code == 200
+    respuesta = cliente_autenticado.get("/uso")
+    assert respuesta.status_code == 200
+    assert "<th>Alta</th>" in respuesta.text  # specs/registro: cuándo se creó cada cuenta
 
 
-def test_otro_usuario_recibe_404_no_403(cliente_autenticado, otro_cliente, usuario_de_prueba, admin_es):
-    """Un 403 confirmaría que la ruta existe; un 404 es indistinguible de una ruta inventada."""
+def test_otro_usuario_vuelve_a_su_plantilla(cliente_autenticado, otro_cliente, usuario_de_prueba, admin_es):
+    """specs/registro A3: ni 404 ni 403; el usuario no debe notar que aquí hay algo."""
     usuario, _ = usuario_de_prueba
     admin_es(usuario.email)
 
-    respuesta = otro_cliente.get("/uso")
+    respuesta = otro_cliente.get("/uso", follow_redirects=False)
 
-    assert respuesta.status_code == 404
-    assert respuesta.json() == otro_cliente.get(f"/no-existe-{uuid.uuid4().hex[:6]}").json()
+    assert respuesta.status_code == 302
+    assert respuesta.headers["location"] == "/plantilla"
 
 
 def test_sin_sesion_redirige_al_login(cliente, admin_es):
@@ -79,7 +44,7 @@ def test_el_admin_ve_el_enlace_en_el_menu(cliente_autenticado, usuario_de_prueba
 
 
 def test_otro_usuario_no_ve_el_enlace(otro_cliente, usuario_de_prueba, admin_es):
-    """Si lo viera, pincharía y se encontraría un 404: ni debe saber que existe."""
+    """Ni debe saber que existe."""
     usuario, _ = usuario_de_prueba
     admin_es(usuario.email)
     assert not _enlace_uso(otro_cliente.get("/token").text)
@@ -93,7 +58,9 @@ def test_sin_sesion_no_se_ve_el_enlace(cliente, admin_es):
 def test_sin_admin_configurado_nadie_pasa(cliente_autenticado, admin_es):
     """Fallo cerrado: olvidarse de la variable en Render oculta el panel, no lo abre."""
     admin_es("")
-    assert cliente_autenticado.get("/uso").status_code == 404
+    respuesta = cliente_autenticado.get("/uso", follow_redirects=False)
+    assert respuesta.status_code == 302
+    assert respuesta.headers["location"] == "/plantilla"
 
 
 # --------------------------------------------------------------------------------------

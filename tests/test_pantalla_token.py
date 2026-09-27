@@ -61,3 +61,36 @@ def test_la_password_de_laliga_nunca_vuelve_en_la_respuesta(cliente_autenticado)
             )
 
     assert secreta not in respuesta.text
+
+
+# --------------------------------------------------------------------------------------
+# specs/registro, A18-A19
+
+
+def test_la_pantalla_es_la_cuenta_de_laliga_y_el_token_va_plegado(cliente_autenticado):
+    """A18: lo manual sigue ahí, pero cerrado."""
+    html = cliente_autenticado.get("/token").text
+    assert "<h1>Tu cuenta de LaLiga</h1>" in html
+    assert "<details>" in html and "<details open" not in html
+    assert html.index('action="/credenciales"') < html.index("<details>") < html.index('action="/token"')
+
+
+def test_con_la_contrasena_rechazada_se_pide_la_nueva(cliente_autenticado, usuario_de_prueba, sesion_db):
+    """A19: no dice "conectada" si LaLiga ya no acepta lo guardado."""
+    from fantasy.auth.credenciales_store import (
+        ERROR_CREDENCIALES_RECHAZADAS,
+        _buscar,
+        guardar_credenciales,
+    )
+
+    usuario, _ = usuario_de_prueba
+    guardar_credenciales(sesion_db, usuario.id, "laliga@example.com", "la-vieja")
+    assert "está conectada" in cliente_autenticado.get("/token").text
+
+    _buscar(sesion_db, usuario.id).ultimo_error = ERROR_CREDENCIALES_RECHAZADAS
+    sesion_db.commit()
+    html = cliente_autenticado.get("/token").text
+
+    assert "Tu contraseña de LaLiga ha cambiado" in html
+    assert 'action="/credenciales"' in html
+    assert "está conectada" not in html

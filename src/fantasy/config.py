@@ -54,6 +54,6 @@ def obtener_config() -> Config:
         # Placeholder deliberado: define FANTASY_CONTACTO antes de scrapear (paso 4).
         contacto=os.getenv("FANTASY_CONTACTO", "mailto:sin-configurar@example.invalid"),
         # Única cuenta que puede ver /uso (specs/observabilidad, D8). Vacía por defecto:
-        # sin configurar, /uso responde 404 a todo el mundo. Fallo cerrado.
+        # sin configurar, nadie es admin. Fallo cerrado.
         admin_email=os.getenv("FANTASY_ADMIN_EMAIL", "").strip().lower(),
     )

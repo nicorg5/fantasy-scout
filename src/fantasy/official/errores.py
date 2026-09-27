@@ -20,6 +20,15 @@ class TokenInvalido(ErrorAPIOficial):
     """
 
 
+class CredencialesRechazadas(TokenInvalido):
+    """No hay token y LaLiga rechaza las credenciales guardadas: el usuario ha cambiado su
+    contraseña allí (specs/registro, D10).
+
+    Subclase de `TokenInvalido` a propósito: todo `except TokenInvalido` sigue valiendo, y
+    solo quien compone el aviso distingue el caso para decir "vuelve a conectarla".
+    """
+
+
 class RespuestaInesperada(ErrorAPIOficial):
     """La respuesta no tiene la forma que esperábamos: la API cambió, o cambió el contrato.
 

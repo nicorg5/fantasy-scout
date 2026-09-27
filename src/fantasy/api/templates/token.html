@@ -1,6 +1,9 @@
 {% extends "base.html" %}
+{# "Cuenta" en el menú. Lo visible es solo conectar la cuenta de LaLiga; pegar el token a
+   mano queda plegado como respaldo por si LaLiga cierra el login programático
+   (specs/registro, A18). #}
 {% block contenido %}
-<h1>Tu token de LaLiga Fantasy</h1>
+<h1>Tu cuenta de LaLiga</h1>
 
 {% if guardado %}
 <p role="alert" class="pico-color-green-500">Token guardado correctamente.</p>
@@ -10,33 +13,37 @@
 {% endif %}
 
 <article>
-  <header><strong>Opción recomendada: conectar tu cuenta</strong></header>
-  {% if tiene_credenciales %}
-  <p>Tu cuenta de LaLiga está conectada: el token se renueva solo, no tienes que hacer nada.</p>
+  {% if tiene_credenciales and not rechazadas %}
+  <p>Tu cuenta de LaLiga está conectada: tus datos se actualizan solos, no tienes que hacer nada.</p>
   <form method="post" action="/credenciales/borrar">
     <button type="submit" class="secondary">Desconectar mi cuenta</button>
   </form>
   {% else %}
-  <p>Introduce tu email y contraseña de <strong>LaLiga Fantasy</strong> y la app obtendrá
-  el token por ti, renovándolo automáticamente cada día.</p>
-  <p><small><strong>Qué implica:</strong> tus credenciales se guardan cifradas en el
-  servidor, porque hay que enviarlas a LaLiga para renovar el token (no se pueden guardar
-  "en un solo sentido" como una contraseña normal). Si prefieres no hacerlo, usa la opción
-  manual de más abajo.</small></p>
+  {% if rechazadas %}
+  <p role="alert" class="pico-color-red-500">Tu contraseña de LaLiga ha cambiado. Escribe la
+  nueva para volver a ver tus datos.</p>
+  {% else %}
+  <p>Conecta tu cuenta con el <strong>mismo email y contraseña que usas en LaLiga
+  Fantasy</strong> y la app mantendrá tus datos al día sola.</p>
+  {% endif %}
   <form method="post" action="/credenciales">
     <label for="email_laliga">Email de LaLiga Fantasy</label>
-    <input type="email" id="email_laliga" name="email_laliga" required autocomplete="off">
+    <input type="email" id="email_laliga" name="email_laliga" required autocomplete="username">
 
     <label for="password_laliga">Contraseña de LaLiga Fantasy</label>
-    <input type="password" id="password_laliga" name="password_laliga" required autocomplete="off">
+    <input type="password" id="password_laliga" name="password_laliga" required autocomplete="current-password">
 
     <button type="submit">Conectar mi cuenta</button>
   </form>
+  <p><small><strong>Qué se guarda:</strong> tu email y tu contraseña de LaLiga, cifrados en
+  el servidor. Hacen falta para renovar cada día tu conexión con LaLiga, así que no se
+  pueden guardar "en un solo sentido" como una contraseña normal.</small></p>
   {% endif %}
 </article>
 
-<article>
-  <header><strong>Opción manual: pegar el token</strong></header>
+<details>
+  <summary>Opción avanzada: pegar el token a mano</summary>
+  <p>Solo si lo anterior no funciona. El token caduca cada día, así que tendrás que repetirlo.</p>
   <ol>
     <li>Entra en <a href="https://www.laligafantasy.com" target="_blank" rel="noopener">laligafantasy.com</a> y haz login normalmente.</li>
     <li>Abre las herramientas de desarrollador de tu navegador (F12, o clic derecho → Inspeccionar) y ve a la pestaña <strong>Red / Network</strong>.</li>
@@ -44,13 +51,10 @@
     <li>En la pestaña de cabeceras de esa petición, localiza <code>Authorization: Bearer &lt;token&gt;</code>.</li>
     <li>Copia solo el valor del token (sin la palabra "Bearer") y pégalo abajo.</li>
   </ol>
-  <p><small>El token caduca con el tiempo — si en algún momento tu plantilla deja de
-  cargar, vuelve a esta pantalla y repite el proceso.</small></p>
-</article>
-
-<form method="post" action="/token">
-  <label for="token">Bearer token</label>
-  <input type="password" id="token" name="token" required autocomplete="off">
-  <button type="submit">Guardar token</button>
-</form>
+  <form method="post" action="/token">
+    <label for="token">Bearer token</label>
+    <input type="password" id="token" name="token" required autocomplete="off">
+    <button type="submit">Guardar token</button>
+  </form>
+</details>
 {% endblock %}

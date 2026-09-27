@@ -229,6 +229,32 @@ class CredencialesLaLiga(Base):
     usuario: Mapped[Usuario] = relationship()
 
 
+class Invitacion(Base):
+    """Enlace de alta de un solo uso (specs/registro, D2).
+
+    Guarda el **SHA-256 del token, nunca el token**: una fuga de la base de datos no deja
+    enlaces utilizables. El estado (pendiente, usada, caducada, revocada) se deriva de las
+    fechas en `auth/invitaciones.py`; no hay columna `estado` que pueda desincronizarse.
+    """
+
+    __tablename__ = "invitacion"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    creada_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    caduca_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    usada_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # SET NULL: borrar un usuario no borra el rastro de que esa invitación se usó.
+    usuario_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id", ondelete="SET NULL"), nullable=True
+    )
+    revocada_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    usuario: Mapped[Usuario | None] = relationship()
+
+
 class AnaliticaDiaria(Base):
     """Analítica scrapeada de TODOS los jugadores, un registro por jugador y día.
 

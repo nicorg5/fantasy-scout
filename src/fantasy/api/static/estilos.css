@@ -545,3 +545,14 @@ main h1 + p { color: var(--ll-texto-tenue); font-size: .95rem; }
   .secciones { flex: 1 1 100%; }
   .secciones a { padding: .35rem .55rem; font-size: .9rem; }
 }
+
+/* --- Invitaciones (specs/registro) --- */
+.invitacion-nueva { border-left: 3px solid var(--ll-sube); }
+.invitacion-nueva input { font-family: ui-monospace, monospace; font-size: .85rem; }
+.estado-invitacion { font-weight: 600; }
+.estado-invitacion--pendiente { color: var(--ll-sube); }
+.estado-invitacion--usada     { color: var(--ll-info); }
+.estado-invitacion--caducada,
+.estado-invitacion--revocada  { color: var(--ll-texto-tenue); }
+form.en-linea { margin: 0; }
+form.en-linea button { width: auto; margin: 0; padding: .25rem .75rem; font-size: .85rem; }

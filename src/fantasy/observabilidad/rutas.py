@@ -10,21 +10,17 @@ Arriba muestra las **mismas comprobaciones que la vigilancia diaria**, con la mi
 from __future__ import annotations
 
 import logging
-import uuid
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from fantasy.auth.dependencias import usuario_actual
-from fantasy.auth.sesiones import NOMBRE_COOKIE, leer_usuario_id_de_cookie
-from fantasy.config import obtener_config
+from fantasy.auth.admin import administrador, es_admin
 from fantasy.observabilidad import consultas
 from fantasy.observabilidad.registro import ACCION_ACTUALIZAR_DATOS, ACCION_FILTRAR_CLAUSULAS
 from fantasy.observabilidad.vigilancia import evaluar
-from fantasy.storage.engine import obtener_fabrica_sesiones, obtener_sesion
+from fantasy.storage.engine import obtener_sesion
 from fantasy.storage.fechas import MADRID, ahora_en_madrid, fecha_local
 from fantasy.storage.modelos import TipoEvento, Usuario
 
@@ -99,51 +95,6 @@ def montar_templates(templates: Jinja2Templates) -> None:
         nombre_ruta=_nombre_ruta, duracion=_duracion, hace=_hace, madrid=_madrid
     )
     templates.env.globals["es_admin"] = es_admin
-
-
-# id del admin por email. No se guarda un "no existe": el admin puede crearse después.
-_ids_admin: dict[str, uuid.UUID] = {}
-
-
-def es_admin(request: Request | None) -> bool:
-    """Si quien navega es el administrador. **Solo decide si se pinta el enlace del menú**:
-    la protección de verdad es la dependencia `administrador` de la ruta.
-
-    Se llama en cada página, así que no puede costar ni romper nada: el id del admin se
-    busca una vez por proceso, y cualquier fallo significa simplemente "no pintar".
-    """
-    admin = obtener_config().admin_email
-    if not admin or request is None:
-        return False
-    usuario_id = leer_usuario_id_de_cookie(request.cookies.get(NOMBRE_COOKIE))
-    if usuario_id is None:
-        return False
-
-    if admin not in _ids_admin:
-        try:
-            with obtener_fabrica_sesiones()() as sesion:
-                encontrado = sesion.scalar(select(Usuario.id).where(func.lower(Usuario.email) == admin))
-        except Exception as exc:  # noqa: BLE001 - un enlace de menú no tumba una página
-            logger.warning("no se pudo comprobar si el usuario es admin: %s", exc)
-            return False
-        if encontrado is None:
-            return False
-        _ids_admin[admin] = encontrado
-
-    return usuario_id == _ids_admin[admin]
-
-
-def administrador(usuario: Usuario = Depends(usuario_actual)) -> Usuario:
-    """Deja pasar solo a `FANTASY_ADMIN_EMAIL`. Sin sesión, `usuario_actual` ya redirige a
-    /login.
-
-    **404 y no 403**: un 403 confirmaría que aquí hay algo. Y si la variable está vacía
-    (en local o en los tests), nadie pasa: fallo cerrado por defecto.
-    """
-    admin = obtener_config().admin_email
-    if not admin or usuario.email.strip().lower() != admin:
-        raise HTTPException(status_code=404)
-    return usuario
 
 
 @router.get("/uso")

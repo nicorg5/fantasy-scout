@@ -2,6 +2,6 @@
    entera, o se anidaría dentro de la que ya está en pantalla. #}
 <table class="jugadores" id="tabla-jugadores">
   <tbody>
-    <tr><td role="alert">{{ mensaje }}</td></tr>
+    <tr><td role="alert">{{ mensaje }}{% if enlace_cuenta %} <a href="/token">Ir a mi cuenta de LaLiga</a>{% endif %}</td></tr>
   </tbody>
 </table>

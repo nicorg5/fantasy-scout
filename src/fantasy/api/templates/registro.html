@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{# Alta por invitación (specs/registro, bloque B). Sin invitación válida no hay formulario. #}
+{% block contenido %}
+<h1>Crear tu cuenta</h1>
+
+{% if not valida %}
+<p role="alert" class="pico-color-red-500">{{ mensaje_no_valida }}</p>
+{% else %}
+<p>Entra con el <strong>mismo email y contraseña que usas en LaLiga Fantasy</strong>. Con eso
+la app conecta tu equipo y lo mantiene al día sola: no tienes que hacer nada más.</p>
+
+{% if error %}
+<p role="alert" class="pico-color-red-500">{{ error }}</p>
+{% endif %}
+{% if ya_tiene_cuenta %}
+<p role="alert" class="pico-color-red-500">Ya tienes una cuenta con ese email.
+<a href="/login">Entra aquí</a>.</p>
+{% endif %}
+
+<form method="post" action="/registro">
+  <input type="hidden" name="invitacion" value="{{ invitacion }}">
+
+  <label for="email">Email de LaLiga Fantasy</label>
+  <input type="email" id="email" name="email" value="{{ email }}" required autofocus autocomplete="username">
+
+  <label for="password">Contraseña de LaLiga Fantasy</label>
+  <input type="password" id="password" name="password" required autocomplete="current-password">
+
+  <button type="submit">Crear mi cuenta</button>
+</form>
+
+<p><small><strong>Qué se guarda:</strong> tu email y tu contraseña de LaLiga, cifrados en el
+servidor. Hacen falta para renovar cada día tu conexión con LaLiga, así que no se pueden
+guardar "en un solo sentido" como una contraseña normal. Nunca se muestran ni se comparten.</small></p>
+{% endif %}
+{% endblock %}

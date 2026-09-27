@@ -27,9 +27,10 @@ logger = logging.getLogger("fantasy.observabilidad")
 #
 # `/uso` se excluye porque el panel vive DENTRO de la propia app (design.md §D8): sin esta
 # línea, el administrador mirando las métricas aparecería como actividad de usuario en las
-# métricas que está mirando.
-RUTAS_IGNORADAS = frozenset({"/health", "/favicon.ico", "/uso"})
-PREFIJOS_IGNORADOS = ("/static",)
+# métricas que está mirando. `/invitaciones` (specs/registro) por lo mismo: son pantallas
+# del administrador, no uso de la app.
+RUTAS_IGNORADAS = frozenset({"/health", "/favicon.ico", "/uso", "/invitaciones"})
+PREFIJOS_IGNORADOS = ("/static", "/invitaciones/")
 
 # Conjunto CERRADO de acciones (O4). Lo que no esté aquí es navegación.
 ACCION_ACTUALIZAR_DATOS = "actualizar_datos"

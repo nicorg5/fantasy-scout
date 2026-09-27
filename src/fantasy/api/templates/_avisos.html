@@ -1,8 +1,9 @@
-{# Avisos de fallos esperados. Un token caducado (dura 24h) es rutina, no un error. #}
+{# Avisos de fallos esperados. Un token caducado (dura 24h) es rutina, no un error.
+   El texto viene de app.py (_aviso_token): sin la palabra "token" (specs/registro, D10). #}
 {% if aviso_token %}
 <article role="alert" class="aviso-token">
   <p>{{ aviso_token }}</p>
-  <a href="/token" role="button">Pegar mi token de LaLiga</a>
+  <a href="/token" role="button">Ir a mi cuenta de LaLiga</a>
 </article>
 {% endif %}
 {% if aviso_error %}

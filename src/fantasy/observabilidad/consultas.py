@@ -193,6 +193,7 @@ def uso_por_ruta(sesion: Session, *, desde: datetime) -> list[UsoDeRuta]:
 class DetalleUsuario:
     user_id: uuid.UUID
     email: str
+    alta: datetime  # `user.creado_en`: cuándo se creó la cuenta (specs/registro)
     ultima_visita: datetime | None
     sesiones: int
     seccion_favorita: str | None
@@ -241,16 +242,19 @@ def detalle_por_usuario(
         sesion.execute(select(ranking.c.user_id, ranking.c.ruta).where(ranking.c.puesto == 1)).all()
     )
 
-    usuarios = sesion.execute(select(Usuario.id, Usuario.email).order_by(Usuario.email)).all()
+    usuarios = sesion.execute(
+        select(Usuario.id, Usuario.email, Usuario.creado_en).order_by(Usuario.email)
+    ).all()
     detalle = [
         DetalleUsuario(
             user_id=uid,
             email=email,
+            alta=alta,
             ultima_visita=ultima.get(uid),
             sesiones=n_sesiones.get(uid, 0),
             seccion_favorita=favorita.get(uid),
         )
-        for uid, email in usuarios
+        for uid, email, alta in usuarios
     ]
     # Los más recientes arriba; quien nunca entró, al final.
     return sorted(detalle, key=lambda d: d.ultima_visita or _NUNCA, reverse=True)

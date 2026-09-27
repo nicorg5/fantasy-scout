@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{# Solo la ve FANTASY_ADMIN_EMAIL (specs/registro, bloque A). #}
+{% block contenido %}
+<h1>Invitación</h1>
+<p>Cada enlace sirve para <strong>una sola alta</strong> y caduca a los 7 días. Mándalo por
+el canal que quieras: quien lo abra solo necesita su email y contraseña de LaLiga Fantasy.</p>
+
+{% if enlace_nuevo %}
+<article class="invitacion-nueva" aria-labelledby="t-enlace">
+  <header><strong id="t-enlace">Enlace creado</strong></header>
+  <label for="enlace-invitacion">Cópialo ahora: no se vuelve a mostrar.</label>
+  <input type="text" id="enlace-invitacion" value="{{ enlace_nuevo }}" readonly onfocus="this.select()">
+  {# JS en línea, sin fichero ni build step. Si el portapapeles falla, el input permite
+     copiarlo a mano. #}
+  <button type="button"
+          onclick="navigator.clipboard.writeText(document.getElementById('enlace-invitacion').value).then(() => { this.textContent = 'Copiado' })">Copiar</button>
+</article>
+{% endif %}
+
+<form method="post" action="/invitaciones">
+  <button type="submit">Crear invitación</button>
+</form>
+
+<section aria-labelledby="t-lista">
+  <h2 id="t-lista">Invitaciones</h2>
+  {% if filas %}
+  <table class="jugadores tabla-uso">
+    <thead><tr><th>Creada</th><th>Estado</th><th>Usada por</th><th>Caduca</th><th></th></tr></thead>
+    <tbody>
+      {% for invitacion, estado in filas %}
+      <tr>
+        <td class="celda-principal" data-etiqueta="Creada">{{ invitacion.creada_en | madrid }}</td>
+        <td data-etiqueta="Estado"><span class="estado-invitacion estado-invitacion--{{ estado.value }}">{{ estado.value | capitalize }}</span></td>
+        <td data-etiqueta="Usada por">
+          {% if invitacion.usuario %}{{ invitacion.usuario.email }}<br><small class="meta">el {{ invitacion.usada_en | madrid }}</small>
+          {% elif invitacion.usada_en %}Cuenta borrada<br><small class="meta">el {{ invitacion.usada_en | madrid }}</small>
+          {% else %}—{% endif %}
+        </td>
+        <td data-etiqueta="Caduca">{{ invitacion.caduca_en | madrid }}</td>
+        <td data-etiqueta="">
+          {% if estado.value == 'pendiente' %}
+          <form method="post" action="/invitaciones/{{ invitacion.id }}/revocar" class="en-linea">
+            <button type="submit" class="secondary outline">Revocar</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="sin-datos">Todavía no has creado ninguna invitación.</p>
+  {% endif %}
+</section>
+{% endblock %}

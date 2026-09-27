@@ -159,6 +159,8 @@ def test_el_detalle_incluye_a_quien_no_ha_entrado(bd):
     detalle = {d.user_id: d for d in consultas.detalle_por_usuario(bd, desde=HACE_30_DIAS)}
 
     assert detalle[activo.id].sesiones == 1
+    # specs/registro: la fecha de alta sale también para quien nunca ha entrado.
+    assert detalle[ausente.id].alta == bd.get(Usuario, ausente.id).creado_en
     assert detalle[activo.id].seccion_favorita == "/mercado"
     assert detalle[ausente.id].sesiones == 0
     assert detalle[ausente.id].ultima_visita is None

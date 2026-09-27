@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from fantasy.api.app import app
 from fantasy.auth.passwords import hashear_password
+from fantasy.config import obtener_config
 from fantasy.storage.engine import obtener_fabrica_sesiones
 from fantasy.storage.modelos import Usuario
 
@@ -99,3 +100,32 @@ def mapa_equipos_falso(monkeypatch):
     yield
     # Sobre la original: en este punto el monkeypatch aún no ha restaurado el atributo.
     original.cache_clear()
+
+
+@pytest.fixture
+def admin_es(monkeypatch):
+    """Fija `FANTASY_ADMIN_EMAIL` para el test. La config está cacheada, así que hay que
+    vaciar la caché al entrar y al salir para que el resto de la suite no la herede."""
+
+    def _fijar(email: str) -> None:
+        monkeypatch.setenv("FANTASY_ADMIN_EMAIL", email)
+        obtener_config.cache_clear()
+
+    yield _fijar
+    obtener_config.cache_clear()
+
+
+@pytest.fixture
+def otro_cliente(sesion_db):
+    """Un segundo usuario con su propia sesión: el que NO es administrador."""
+    email, password = f"otro-{uuid.uuid4().hex[:8]}@example.com", "otra-password-123"
+    usuario = Usuario(email=email, password_hash=hashear_password(password))
+    sesion_db.add(usuario)
+    sesion_db.commit()
+
+    cliente = TestClient(app)
+    assert cliente.post("/login", data={"email": email, "password": password}, follow_redirects=False).status_code == 302
+    yield cliente
+
+    sesion_db.delete(sesion_db.get(Usuario, usuario.id))
+    sesion_db.commit()

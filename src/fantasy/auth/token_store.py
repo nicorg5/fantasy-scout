@@ -55,6 +55,15 @@ def _buscar_por_usuario(sesion: Session, usuario_id: uuid.UUID) -> TokenUsuario 
 
 def guardar_token(sesion: Session, usuario_id: uuid.UUID, token_en_claro: str) -> TokenUsuario:
     """Cifra y guarda el token, sustituyendo el anterior si ya existía uno."""
+    fila = escribir_token(sesion, usuario_id, token_en_claro)
+    sesion.commit()
+    sesion.refresh(fila)
+    return fila
+
+
+def escribir_token(sesion: Session, usuario_id: uuid.UUID, token_en_claro: str) -> TokenUsuario:
+    """Como `guardar_token` pero **sin confirmar**: para quien necesita meterlo en una
+    transacción mayor, como el alta (specs/registro, D4)."""
     cifrado = _fernet().encrypt(token_en_claro.encode())
     # La caducidad real del propio token manda; el respaldo solo cubre el caso de que
     # LaLiga deje de emitir JWT o cambie el formato.
@@ -69,9 +78,6 @@ def guardar_token(sesion: Session, usuario_id: uuid.UUID, token_en_claro: str) -
     else:
         fila.token_cifrado = cifrado
         fila.expira_en = expira_en
-
-    sesion.commit()
-    sesion.refresh(fila)
     return fila
 
 

@@ -12,8 +12,8 @@ import uuid
 import httpx
 from sqlalchemy.orm import Session
 
-from fantasy.auth.credenciales_store import obtener_token_valido
-from fantasy.official.errores import RespuestaInesperada, TokenInvalido
+from fantasy.auth.credenciales_store import credenciales_rechazadas, obtener_token_valido
+from fantasy.official.errores import CredencialesRechazadas, RespuestaInesperada, TokenInvalido
 from fantasy.official.modelos import (
     JugadorConClausula,
     Plantilla,
@@ -36,8 +36,10 @@ class ClienteOficial:
         # Renueva solo si hace falta: token guardado -> refresh -> login completo.
         token = obtener_token_valido(self._sesion, self._usuario_id)
         if token is None:
-            # Ni token válido ni forma de obtenerlo. Para el usuario la acción es la
-            # misma que ante un 401: revisar sus credenciales o pegar un token.
+            # Ni token válido ni forma de obtenerlo. Si es porque LaLiga rechaza la
+            # contraseña guardada, el usuario tiene que saberlo: la cambió allí.
+            if credenciales_rechazadas(self._sesion, self._usuario_id):
+                raise CredencialesRechazadas("LaLiga rechaza las credenciales guardadas.")
             raise TokenInvalido(
                 "No hay un token válido y no se ha podido renovar automáticamente."
             )

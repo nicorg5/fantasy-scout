@@ -19,7 +19,7 @@ from fantasy.analytics.presentacion import (
     ProbabilidadJugar,
     TendenciaValor,
 )
-from fantasy.official.errores import RespuestaInesperada, TokenInvalido
+from fantasy.official.errores import CredencialesRechazadas, RespuestaInesperada, TokenInvalido
 
 RUTAS = ("/plantilla", "/mercado")
 DESTINO = {"/plantilla": "obtener_plantilla", "/mercado": "obtener_mercado"}
@@ -85,12 +85,32 @@ def test_origen_del_dato_etiquetado(cliente_autenticado):
 
 @pytest.mark.parametrize("ruta", RUTAS)
 def test_token_invalido_avisa_y_no_revienta(cliente_autenticado, ruta):
-    """R13: 200 con aviso y enlace a /token, nunca un 500."""
+    """R13: 200 con aviso y enlace a /token, nunca un 500. Sin la palabra "token"
+    (specs/registro, D10): quien llega por invitación no sabe qué es."""
     with patch(f"fantasy.api.app.{DESTINO[ruta]}", side_effect=TokenInvalido("caducado")):
         respuesta = cliente_autenticado.get(ruta)
 
     assert respuesta.status_code == 200
-    assert "caducado" in respuesta.text or "no es válido" in respuesta.text
+    assert "No hemos podido conectar con tu cuenta de LaLiga" in respuesta.text
+    assert 'href="/token"' in respuesta.text
+
+
+@pytest.mark.parametrize(
+    ("ruta", "destino"),
+    [
+        ("/plantilla", "obtener_plantilla"),
+        ("/plantilla/tabla", "obtener_plantilla"),
+        ("/mercado", "obtener_mercado"),
+        ("/clausulas", "obtener_clausulas"),
+    ],
+)
+def test_contrasena_cambiada_en_laliga_lo_dice_claro(cliente_autenticado, ruta, destino):
+    """specs/registro A20: 200, el motivo real y cómo arreglarlo."""
+    with patch(f"fantasy.api.app.{destino}", side_effect=CredencialesRechazadas("x")):
+        respuesta = cliente_autenticado.get(ruta)
+
+    assert respuesta.status_code == 200
+    assert "Tu contraseña de LaLiga ha cambiado" in respuesta.text
     assert 'href="/token"' in respuesta.text
 
 
@@ -179,7 +199,8 @@ def test_fragmento_con_error_sigue_siendo_fragmento(cliente_autenticado):
 
     assert respuesta.status_code == 200
     assert "<!DOCTYPE html>" not in respuesta.text
-    assert "caducado" in respuesta.text.lower() or "sesión" in respuesta.text.lower()
+    assert "No hemos podido conectar con tu cuenta de LaLiga" in respuesta.text
+    assert 'href="/token"' in respuesta.text
 
 
 def test_las_paginas_cargan_htmx_sin_build_step(cliente_autenticado):

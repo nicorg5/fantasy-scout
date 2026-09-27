@@ -18,13 +18,14 @@ from fantasy.analytics.servicio import (
     obtener_mercado,
     obtener_plantilla,
 )
+from fantasy.auth.admin import NoAdministrador
 from fantasy.auth.dependencias import NoAutenticado, usuario_actual
 from fantasy.auth.rutas import montar_templates
 from fantasy.auth.rutas import router as auth_router
 from fantasy.observabilidad.middleware import registrar_uso
 from fantasy.observabilidad.rutas import montar_templates as montar_templates_uso
 from fantasy.observabilidad.rutas import router as uso_router
-from fantasy.official.errores import ErrorAPIOficial, TokenInvalido
+from fantasy.official.errores import CredencialesRechazadas, ErrorAPIOficial, TokenInvalido
 from fantasy.storage.engine import obtener_sesion
 from fantasy.storage.modelos import Usuario
 
@@ -50,6 +51,13 @@ def _redirigir_a_login(request: Request, exc: NoAutenticado) -> RedirectResponse
     return RedirectResponse(url="/login", status_code=302)
 
 
+@app.exception_handler(NoAdministrador)
+def _redirigir_a_plantilla(request: Request, exc: NoAdministrador) -> RedirectResponse:
+    """Un usuario normal que teclea /uso o /invitaciones vuelve a su plantilla sin ver
+    ningún error: no debe notar que ahí hay algo (specs/registro, A3)."""
+    return RedirectResponse(url="/plantilla", status_code=302)
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -60,23 +68,28 @@ def raiz() -> RedirectResponse:
     return RedirectResponse(url="/plantilla")
 
 
+# Sin tecnicismos: quien llega por invitación no sabe qué es un token (specs/registro, D10).
+AVISO_SIN_CONEXION = "No hemos podido conectar con tu cuenta de LaLiga. Revísala para ver tus datos."
+AVISO_CONTRASENA_CAMBIADA = "Tu contraseña de LaLiga ha cambiado: vuelve a conectarla para ver tus datos."
+
+
+def _aviso_token(exc: TokenInvalido) -> str:
+    return AVISO_CONTRASENA_CAMBIADA if isinstance(exc, CredencialesRechazadas) else AVISO_SIN_CONEXION
+
+
 def _pagina_de_jugadores(request, plantilla_html: str, titulo: str, cargar, sesion=None):
     """Renderiza una pantalla de jugadores traduciendo los fallos esperados en avisos.
 
     Un token caducado es un evento normal (dura 24h), no un error del servidor: se
-    responde 200 con un aviso y enlace a /token, nunca un 500 (R13).
+    responde 200 con un aviso y enlace a /token (Cuenta), nunca un 500 (R13).
     """
     try:
         jugadores = cargar()
-    except TokenInvalido:
+    except TokenInvalido as exc:
         return TEMPLATES.TemplateResponse(
             request=request,
             name=plantilla_html,
-            context={
-                "titulo": titulo,
-                "jugadores": [],
-                "aviso_token": "Tu token de LaLiga ha caducado o no es válido. Vuelve a pegarlo para ver tus datos.",
-            },
+            context={"titulo": titulo, "jugadores": [], "aviso_token": _aviso_token(exc)},
         )
     except ErrorAPIOficial as exc:
         logger.warning("fallo de la API oficial en %s: %s", titulo, exc)
@@ -115,11 +128,11 @@ def _fragmento_tabla(request, titulo: str, cargar, con_variacion: bool = False, 
     """
     try:
         jugadores = cargar()
-    except TokenInvalido:
+    except TokenInvalido as exc:
         return TEMPLATES.TemplateResponse(
             request=request,
             name="_tabla_error.html",
-            context={"mensaje": "Tu sesión con LaLiga ha caducado. Recarga la página."},
+            context={"mensaje": _aviso_token(exc), "enlace_cuenta": True},
         )
     except ErrorAPIOficial as exc:
         logger.warning("fallo de la API oficial en el fragmento %s: %s", titulo, exc)
@@ -174,10 +187,8 @@ def clausulas(
 
     try:
         filas, opciones = obtener_clausulas(sesion, usuario.id, filtros)
-    except TokenInvalido:
-        contexto["aviso_token"] = (
-            "Tu token de LaLiga ha caducado o no es válido. Vuelve a pegarlo para ver tus datos."
-        )
+    except TokenInvalido as exc:
+        contexto["aviso_token"] = _aviso_token(exc)
         return TEMPLATES.TemplateResponse(request=request, name="clausulas.html", context=contexto)
     except ErrorAPIOficial as exc:
         logger.warning("fallo de la API oficial en clausulas: %s", exc)

@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from sqlalchemy import select
 
-from fantasy.auth.passwords import hashear_password
+from fantasy.auth.passwords import hashear_password, normalizar_email
 from fantasy.storage.engine import obtener_fabrica_sesiones
 from fantasy.storage.modelos import Usuario
 
@@ -28,6 +28,7 @@ def main() -> None:
     parser.add_argument("--password", default=None, help="Si se omite, se pide por stdin")
     args = parser.parse_args()
 
+    email = normalizar_email(args.email)
     password = args.password or getpass.getpass("Password: ")
     if not password:
         print("La password no puede estar vacía.", file=sys.stderr)
@@ -35,12 +36,12 @@ def main() -> None:
 
     fabrica = obtener_fabrica_sesiones()
     with fabrica() as sesion:
-        existente = sesion.scalar(select(Usuario).where(Usuario.email == args.email))
+        existente = sesion.scalar(select(Usuario).where(Usuario.email == email))
         if existente is not None:
-            print(f"Ya existe un usuario con el email {args.email!r}.", file=sys.stderr)
+            print(f"Ya existe un usuario con el email {email!r}.", file=sys.stderr)
             raise SystemExit(1)
 
-        usuario = Usuario(email=args.email, password_hash=hashear_password(password))
+        usuario = Usuario(email=email, password_hash=hashear_password(password))
         sesion.add(usuario)
         sesion.commit()
         print(f"Usuario creado: {usuario.email} ({usuario.id})")

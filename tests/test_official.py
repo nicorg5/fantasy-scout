@@ -153,3 +153,43 @@ def test_token_caducado_es_TokenInvalido(sesion_db, usuario_de_prueba, jwt_falso
     cliente = ClienteOficial(sesion_db, usuario.id)
     with pytest.raises(TokenInvalido):
         cliente.obtener_mercado("012345678")
+
+
+def test_credenciales_rechazadas_se_distinguen(sesion_db, usuario_de_prueba, monkeypatch):
+    """specs/registro D10: si LaLiga rechaza la contraseña guardada, el error dice cuál es
+    el problema (y sigue siendo un TokenInvalido para quien no distinga)."""
+    from fantasy.auth import laliga_login
+    from fantasy.auth.credenciales_store import guardar_credenciales
+    from fantasy.official.cliente import ClienteOficial
+    from fantasy.official.errores import CredencialesRechazadas
+
+    usuario, _ = usuario_de_prueba
+    guardar_credenciales(sesion_db, usuario.id, "laliga@example.com", "la-vieja")
+
+    def _rechaza(email, password):
+        raise laliga_login.CredencialesInvalidas("x")
+
+    monkeypatch.setattr(laliga_login, "iniciar_sesion", _rechaza)
+
+    with pytest.raises(CredencialesRechazadas):
+        ClienteOficial(sesion_db, usuario.id).obtener_mercado("012345678")
+
+
+def test_sin_conexion_por_otro_motivo_no_es_contrasena_cambiada(sesion_db, usuario_de_prueba, monkeypatch):
+    """Login de LaLiga caído: no hay que decirle al usuario que cambió su contraseña."""
+    from fantasy.auth import laliga_login
+    from fantasy.auth.credenciales_store import guardar_credenciales
+    from fantasy.official.cliente import ClienteOficial
+    from fantasy.official.errores import CredencialesRechazadas, TokenInvalido
+
+    usuario, _ = usuario_de_prueba
+    guardar_credenciales(sesion_db, usuario.id, "laliga@example.com", "la-vieja")
+
+    def _caido(email, password):
+        raise laliga_login.LoginNoDisponible("x")
+
+    monkeypatch.setattr(laliga_login, "iniciar_sesion", _caido)
+
+    with pytest.raises(TokenInvalido) as exc:
+        ClienteOficial(sesion_db, usuario.id).obtener_mercado("012345678")
+    assert not isinstance(exc.value, CredencialesRechazadas)
