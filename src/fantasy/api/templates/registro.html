@@ -26,10 +26,8 @@ LaLiga. <a href="/login">Entra aquí</a>.</p>
 servidor, para mantener tus datos al día. Nunca vemos tu contraseña de Google.</small></p>
 
 {% else %}
-{# --- Vía contraseña de LaLiga (specs/registro). --- #}
-<p>Entra con el <strong>mismo email y contraseña que usas en LaLiga Fantasy</strong>. Con eso
-la app conecta tu equipo y lo mantiene al día sola: no tienes que hacer nada más.</p>
-
+{# --- Elección de vía. La social va primero y al mismo nivel: quien entra en LaLiga con
+   Google no tiene contraseña de LaLiga y antes no veía su opción (specs/registro-social, T12). #}
 {% if error %}
 <p role="alert" class="pico-color-red-500">{{ error }}</p>
 {% endif %}
@@ -38,27 +36,41 @@ la app conecta tu equipo y lo mantiene al día sola: no tienes que hacer nada m�
 <a href="/login">Entra aquí</a>.</p>
 {% endif %}
 
-<form method="post" action="/registro">
-  <input type="hidden" name="invitacion" value="{{ invitacion }}">
+<section class="eleccion-via" aria-labelledby="t-via">
+  <h2 id="t-via">¿Cómo entras en LaLiga Fantasy?</h2>
+  <p>Elige la misma forma con la que entras en la app de LaLiga Fantasy.</p>
+  <div class="eleccion-via__botones">
+    {# GET: la página social tiene su propia dirección y se puede recargar. #}
+    <a href="/registro/social?invitacion={{ invitacion | urlencode }}" role="button">Con Google, Apple o Facebook</a>
+    <a href="#con-contrasena" role="button" class="secondary">Con email y contraseña</a>
+  </div>
+</section>
 
-  <label for="email">Email de LaLiga Fantasy</label>
-  <input type="email" id="email" name="email" value="{{ email }}" required autofocus autocomplete="username">
+<section id="con-contrasena" class="via-contrasena" aria-labelledby="t-contrasena">
+  {# --- Vía contraseña de LaLiga (specs/registro). Sin autofocus: en el móvil abriría el
+     teclado y taparía la elección de arriba. --- #}
+  <h2 id="t-contrasena">Con email y contraseña</h2>
+  <p>Escribe el <strong>mismo email y contraseña que usas en LaLiga Fantasy</strong>. Con eso
+  la app conecta tu equipo y lo mantiene al día sola: no tienes que hacer nada más.</p>
 
-  <label for="password">Contraseña de LaLiga Fantasy</label>
-  <input type="password" id="password" name="password" required autocomplete="current-password">
+  <form method="post" action="/registro">
+    <input type="hidden" name="invitacion" value="{{ invitacion }}">
 
-  <button type="submit">Crear mi cuenta</button>
-</form>
+    <label for="email">Email de LaLiga Fantasy</label>
+    <input type="email" id="email" name="email" value="{{ email }}" required autocomplete="username">
 
-<p><small><strong>Qué se guarda:</strong> tu email y tu contraseña de LaLiga, cifrados en el
-servidor. Hacen falta para renovar cada día tu conexión con LaLiga, así que no se pueden
-guardar "en un solo sentido" como una contraseña normal. Nunca se muestran ni se comparten.</small></p>
+    <label for="password">Contraseña de LaLiga Fantasy</label>
+    <input type="password" id="password" name="password" required autocomplete="current-password">
 
-<article class="otra-via">
-  <p><strong>¿Entras en LaLiga con Google, Apple u otra red social?</strong> Entonces no
-  tienes contraseña de LaLiga: usa esta opción.</p>
-  {# GET: la página social tiene su propia dirección y se puede recargar. #}
-  <a href="/registro/social?invitacion={{ invitacion | urlencode }}" role="button" class="secondary">Entro en LaLiga con Google u otra red social</a>
-</article>
+    {% if error %}
+    <p role="alert" class="pico-color-red-500">{{ error }}</p>
+    {% endif %}
+    <button type="submit">Crear mi cuenta</button>
+  </form>
+
+  <p><small><strong>Qué se guarda:</strong> tu email y tu contraseña de LaLiga, cifrados en el
+  servidor. Hacen falta para renovar cada día tu conexión con LaLiga, así que no se pueden
+  guardar "en un solo sentido" como una contraseña normal. Nunca se muestran ni se comparten.</small></p>
+</section>
 {% endif %}
 {% endblock %}

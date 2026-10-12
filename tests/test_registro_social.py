@@ -894,3 +894,13 @@ def test_toda_clase_de_color_usada_esta_definida_en_el_css():
     css = (raiz / "static/estilos.css").read_text()
     assert usadas, "no se encontraron clases de color: el test no está mirando nada"
     assert not [c for c in usadas if f".{c}" not in css]
+
+
+def test_la_opcion_social_va_primero_y_sin_autofocus(cliente, invitacion):
+    """T12: quien entra con Google tiene que ver su opción nada más abrir la invitación."""
+    _, token = invitacion
+    html = cliente.get(f"/registro?invitacion={token}").text
+    assert "¿Cómo entras en LaLiga Fantasy?" in html
+    assert html.index("Con Google, Apple o Facebook") < html.index('action="/registro"')
+    assert 'href="#con-contrasena"' in html
+    assert "autofocus" not in html.split("<main", 1)[1]

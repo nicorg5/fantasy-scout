@@ -562,8 +562,13 @@ form.en-linea button { width: auto; margin: 0; padding: .25rem .75rem; font-size
 .pasos-social > li { margin-bottom: 1.5rem; }
 .pasos-social textarea { font-family: ui-monospace, monospace; font-size: .8rem; }
 .aviso-navegador { border-left: 3px solid var(--ll-aviso); padding-left: .75rem; color: var(--ll-aviso); }
-.otra-via { margin-top: 2rem; border-left: 3px solid var(--ll-info); }
-.otra-via button { width: auto; }
+/* Elección de vía en /registro: dos botones del mismo tamaño, uno bajo otro en el móvil. */
+.eleccion-via { margin-bottom: 2.5rem; }
+.eleccion-via h2 { margin-bottom: .5rem; }
+.eleccion-via__botones { display: grid; gap: .75rem; grid-template-columns: 1fr; }
+.eleccion-via__botones a[role="button"] { width: 100%; text-align: center; padding: .9rem 1rem; }
+@media (min-width: 576px) { .eleccion-via__botones { grid-template-columns: 1fr 1fr; } }
+.via-contrasena { border-top: 1px solid var(--ll-borde); padding-top: 1.5rem; }
 
 /* --- Mensajes de error y de éxito ---
    Las plantillas usan las clases de color de Pico, pero esas viven en pico.colors.min.css,
