@@ -44,7 +44,9 @@ uv run --env-file .env.produccion alembic upgrade head   # si hay migraciones nu
   bloque cubre el cambio CET/CEST. El script decide mirando la **hora real de Madrid**,
   porque GitHub Actions retrasa los crons (se han visto 2 h de retraso).
 - **Vigilancia** (`.github/workflows/vigilancia.yml`, 06:00 UTC): único canal de aviso. Si
-  `scripts/vigilancia.py` sale ≠ 0, GitHub manda email. Solo lee la BD.
+  `scripts/vigilancia.py` sale ≠ 0, GitHub manda email. Lee la BD y hace **una** petición
+  GET al login de LaLiga para comprobar que `https://jwt.ms` sigue aceptada (solo desde el
+  script; el panel `/uso` nunca llama a LaLiga).
 - Ningún secreto en el repo: en `render.yaml` van con `sync: false`.
 
 ## Arquitectura
@@ -92,6 +94,11 @@ usuarios no son técnicos (`_aviso_token`).
   `/invitaciones`; `/registro` valida contra LaLiga y crea usuario, credenciales, token e
   invitación usada **en una sola transacción** (`auth/alta.py`). La contraseña de la app
   es la de LaLiga; los emails se guardan siempre con `normalizar_email()`.
+- **Vía social** (`specs/registro-social/`) para cuentas de LaLiga de Google, Apple…:
+  código de autorización + PKCE con vuelta a `https://jwt.ms` (`laliga_login`, `intentos`,
+  `alta.dar_de_alta_social`, `reconexion`). Son filas `tipo='social'` en
+  `laliga_credentials`, sin contraseña de LaLiga: se renuevan **solo** con refresh token y
+  **nunca** se les intenta ROPC. Tienen contraseña propia de fantasy-scout para `/login`.
 - El admin es `FANTASY_ADMIN_EMAIL` (`auth/admin.py`). Una pantalla de admin nueva usa la
   dependencia `administrador`: a quien no lo es se le redirige a `/plantilla`, **nunca**
   un 404 ni un 403, y su enlace va dentro de `es_admin(request)` en `base.html`.

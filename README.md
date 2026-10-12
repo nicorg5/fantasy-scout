@@ -89,6 +89,16 @@ sirve para una sola alta y caduca a los 7 días. Quien lo abre solo pone su emai
 contraseña de LaLiga Fantasy: se validan contra LaLiga, se crea su cuenta ya conectada y
 entra directamente en su plantilla. Para entrar después usa esos mismos datos.
 
+Quien entra en LaLiga Fantasy **con Google, Apple u otra red social** no tiene contraseña de
+LaLiga. Para ellos, la misma invitación ofrece una segunda vía: abren el login oficial de
+LaLiga, entran con Google, copian la dirección de la página de Microsoft (`https://jwt.ms`)
+en la que acaban y la pegan en fantasy-scout, junto con una contraseña propia para la app.
+Funciona desde el móvil (Safari, Chrome o Edge) sin ordenador. Que no abran la invitación
+dentro de WhatsApp: Google no deja iniciar sesión ahí.
+
+> La vía social depende de que LaLiga mantenga `https://jwt.ms` como dirección de vuelta
+> registrada (es un resto de sus pruebas). La vigilancia de cada mañana lo comprueba.
+
 El script sigue sirviendo como puerta trasera. Contra producción, con
 `uv run --env-file .env.produccion python scripts/crear_usuario.py --email ...`.
 
@@ -119,6 +129,10 @@ La app necesita un *bearer token* de LaLiga Fantasy, que **caduca cada 24 horas*
 
 Si cambias la contraseña en LaLiga, entra en la app con la nueva: se comprueba contra LaLiga
 y se actualiza sola.
+
+Las cuentas de **Google u otra red social** no guardan contraseña de LaLiga: se mantienen con
+un *refresh token* que dura 90 días y se renueva cada día. Si LaLiga deja de renovarlo, la app
+avisa y se reconecta desde **Cuenta** con los mismos tres pasos del alta.
 
 > La vía automática guarda tu contraseña de LaLiga **cifrada, pero de forma reversible**
 > (hay que enviársela a LaLiga para renovar). Si la base de datos se compromete, esa
@@ -223,8 +237,10 @@ cuánto rato se queda**. Todo se queda en la propia base de datos, sin terceros.
   Los demás no lo ven, y si escriben la URL vuelven a su plantilla.
   Usuarios activos, sesiones, secciones, velocidad por ruta, login de LaLiga y cron.
 - **Vigilancia**: cada mañana, `vigilancia.py` comprueba que el cron corre, que se guarda el
-  snapshot, que la cobertura del emparejamiento no se desploma y que el login automático
-  de LaLiga no falla. Si algo va mal, el workflow queda en rojo y GitHub manda un email.
+  snapshot, que la cobertura del emparejamiento no se desploma, que el login automático
+  de LaLiga no falla y que LaLiga sigue aceptando la vuelta de las altas con Google (una
+  petición GET a su login, sin credenciales). Si algo va mal, el workflow queda en rojo y
+  GitHub manda un email.
 
 Los eventos se purgan a los `FANTASY_RETENCION_DIAS` (90 por defecto). Diseño completo en
 `specs/observabilidad/`.
