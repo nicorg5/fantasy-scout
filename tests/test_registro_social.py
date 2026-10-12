@@ -764,3 +764,11 @@ def test_uso_e_invitacion_muestran_el_tipo_de_cuenta(sesion_db, cuenta_social, c
     uso = cliente_autenticado.get("/uso").text
     assert "<th>Conexión</th>" in uso and "Red social" in uso
     assert "Red social" in cliente_autenticado.get("/invitaciones").text
+
+
+def test_el_paso_2_avisa_de_no_escribir_en_jwt_ms(cliente, invitacion):
+    """Descubierto en la primera prueba real: "Enter token below" parece pedir algo."""
+    _, token = invitacion
+    html = _iniciar(cliente, token).text
+    assert "Enter token below" in html
+    assert "no escribas nada en esa página" in html
