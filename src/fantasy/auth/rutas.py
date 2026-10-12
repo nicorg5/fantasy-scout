@@ -375,7 +375,7 @@ def iniciar_registro_social(
     fila = invitaciones.buscar_pendiente(sesion, invitacion)
     if fila is None:
         return _pagina_registro(request, invitacion, valida=False, codigo=400)
-    _, url_login = intentos.crear(sesion, invitacion_id=fila.id)
+    _, url_login = intentos.obtener_o_crear(sesion, invitacion_id=fila.id)
     return _pagina_social(request, invitacion, url_login=url_login)
 
 
@@ -453,7 +453,7 @@ def iniciar_reconexion_social(
 ):
     if not es_social(buscar_credenciales(sesion, usuario.id)):
         return RedirectResponse(url="/token", status_code=302)
-    _, url_login = intentos.crear(sesion, usuario_id=usuario.id)
+    _, url_login = intentos.obtener_o_crear(sesion, usuario_id=usuario.id)
     return _pagina_token(request, sesion, usuario, url_login=url_login, mostrar_pasos=True)
 
 

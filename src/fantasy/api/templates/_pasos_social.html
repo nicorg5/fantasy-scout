@@ -13,8 +13,9 @@ Edge.</p>
     <strong>Entra en LaLiga.</strong>
     {% if url_login %}
     {# noreferrer: la URL de esta página puede llevar la invitación y no debe llegar a LaLiga. #}
-    <p>Se abrirá en otra pestaña. Elige <strong>Google</strong> (o la red social que uses en
-    LaLiga Fantasy) y entra como siempre.</p>
+    <p>Se abrirá en <strong>otra pestaña</strong>. Elige <strong>Google</strong> (o la red
+    social que uses en LaLiga Fantasy) y entra como siempre. Cuando copies la dirección del
+    paso 2, <strong>vuelve a esta pestaña</strong> con el botón de pestañas del navegador.</p>
     <a href="{{ url_login }}" target="_blank" rel="noopener noreferrer" role="button">Abrir el login de LaLiga</a>
     {% else %}
     <form method="post" action="{{ accion_iniciar }}" class="en-linea">

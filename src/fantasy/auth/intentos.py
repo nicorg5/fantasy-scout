@@ -66,6 +66,30 @@ def crear(
     return intento, laliga_login.url_login_social(state, verificador)
 
 
+def obtener_o_crear(
+    sesion: Session,
+    *,
+    invitacion_id: uuid.UUID | None = None,
+    usuario_id: uuid.UUID | None = None,
+    ahora: datetime | None = None,
+) -> tuple[IntentoConexion, str]:
+    """El intento vigente de esa invitación o usuario, o uno nuevo si no hay.
+
+    Reutilizar es lo que permite volver a abrir la invitación de WhatsApp a mitad del alta:
+    la dirección de jwt.ms ya copiada sigue valiendo, en vez de quedar anulada por un
+    intento nuevo (descubierto en la primera prueba real, specs/registro-social T12)."""
+    ahora = ahora or _ahora()
+    dueno = (
+        IntentoConexion.invitacion_id == invitacion_id
+        if invitacion_id is not None
+        else IntentoConexion.usuario_id == usuario_id
+    )
+    vigente = sesion.scalar(select(IntentoConexion).where(dueno, IntentoConexion.caduca_en > ahora))
+    if vigente is not None:
+        return vigente, laliga_login.url_login_social(vigente.state, verificador(vigente))
+    return crear(sesion, invitacion_id=invitacion_id, usuario_id=usuario_id, ahora=ahora)
+
+
 def buscar_vigente(sesion: Session, state: str | None, ahora: datetime | None = None) -> IntentoConexion | None:
     if not state:
         return None

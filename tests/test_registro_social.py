@@ -772,3 +772,39 @@ def test_el_paso_2_avisa_de_no_escribir_en_jwt_ms(cliente, invitacion):
     html = _iniciar(cliente, token).text
     assert "Enter token below" in html
     assert "no escribas nada en esa página" in html
+
+
+# --------------------------------------------------------------------------------------
+# Primera prueba real: reabrir la invitación a mitad del alta no la estropea
+
+
+def test_obtener_o_crear_reutiliza_el_intento_vigente(sesion_db, invitacion):
+    fila, _ = invitacion
+    primero, url_1 = intentos.obtener_o_crear(sesion_db, invitacion_id=fila.id)
+    segundo, url_2 = intentos.obtener_o_crear(sesion_db, invitacion_id=fila.id)
+    assert segundo.id == primero.id and url_2 == url_1
+
+
+def test_obtener_o_crear_hace_uno_nuevo_si_el_vigente_caduco(sesion_db, invitacion):
+    fila, _ = invitacion
+    viejo, _ = intentos.crear(sesion_db, invitacion_id=fila.id, ahora=datetime.now(timezone.utc) - timedelta(minutes=20))
+    estado_viejo = viejo.state
+    nuevo, _ = intentos.obtener_o_crear(sesion_db, invitacion_id=fila.id)
+    assert nuevo.state != estado_viejo
+
+
+def test_la_direccion_copiada_vale_aunque_reabra_la_invitacion(cliente, sesion_db, invitacion, email_social, laliga_canjea):
+    """El amigo copia jwt.ms, vuelve al enlace de WhatsApp y pulsa otra vez la vía social."""
+    _, token = invitacion
+    enlace_1 = _enlace_login(_iniciar(cliente, token).text)
+    state = _params(enlace_1)["state"]
+    enlace_2 = _enlace_login(_iniciar(cliente, token).text)  # reabre la invitación
+    assert enlace_2 == enlace_1
+
+    respuesta = _alta_web(cliente, token, f"https://jwt.ms/#state={state}&code=COD-1")
+    assert respuesta.status_code == 302
+
+
+def test_el_paso_1_dice_que_vuelva_a_esta_pestana(cliente, invitacion):
+    _, token = invitacion
+    assert "vuelve a esta pestaña" in _iniciar(cliente, token).text
