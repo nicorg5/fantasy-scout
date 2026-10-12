@@ -123,7 +123,7 @@ def test_el_intento_guarda_el_verificador_del_enlace_cifrado(sesion_db, invitaci
     reto = base64.urlsafe_b64encode(hashlib.sha256(verificador.encode()).digest()).decode().rstrip("=")
     assert params["code_challenge"] == reto
     assert verificador.encode() not in intento.verificador_cifrado
-    assert timedelta(minutes=14) < intento.caduca_en - datetime.now(timezone.utc) <= timedelta(minutes=15)
+    assert timedelta(minutes=29) < intento.caduca_en - datetime.now(timezone.utc) <= timedelta(minutes=30)
 
 
 def test_un_segundo_intento_sustituye_al_primero(sesion_db, invitacion):
@@ -139,7 +139,7 @@ def test_un_segundo_intento_sustituye_al_primero(sesion_db, invitacion):
 
 def test_un_intento_caducado_no_se_encuentra_y_se_limpia(sesion_db, invitacion, usuario_de_prueba):
     fila, _ = invitacion
-    viejo, _ = intentos.crear(sesion_db, invitacion_id=fila.id, ahora=datetime.now(timezone.utc) - timedelta(minutes=20))
+    viejo, _ = intentos.crear(sesion_db, invitacion_id=fila.id, ahora=datetime.now(timezone.utc) - timedelta(minutes=40))
     estado_viejo = viejo.state
     assert intentos.buscar_vigente(sesion_db, estado_viejo) is None
 
@@ -347,9 +347,9 @@ def test_intento_de_otra_invitacion_o_caducado(sesion_db, invitacion, laliga_can
     otra, _ = invitaciones.crear(sesion_db)
     try:
         ajeno, _ = intentos.crear(sesion_db, invitacion_id=otra.id)
-        with pytest.raises(alta.IntentoNoValido):
+        with pytest.raises(alta.IntentoDeOtraInvitacion):
             alta.dar_de_alta_social(sesion_db, token, _pegado(ajeno), PROPIA, PROPIA)
-        caducado, _ = intentos.crear(sesion_db, invitacion_id=fila.id, ahora=datetime.now(timezone.utc) - timedelta(minutes=16))
+        caducado, _ = intentos.crear(sesion_db, invitacion_id=fila.id, ahora=datetime.now(timezone.utc) - timedelta(minutes=31))
         with pytest.raises(alta.IntentoNoValido):
             alta.dar_de_alta_social(sesion_db, token, _pegado(caducado), PROPIA, PROPIA)
     finally:
@@ -477,7 +477,7 @@ UA = {
 
 
 def _iniciar(cliente, token, ua=UA["safari_iphone"]):
-    return cliente.post("/registro/social/iniciar", data={"invitacion": token}, headers={"User-Agent": ua})
+    return cliente.get("/registro/social", params={"invitacion": token}, headers={"User-Agent": ua})
 
 
 def _enlace_login(html: str) -> str:
@@ -489,7 +489,7 @@ def test_la_invitacion_ofrece_las_dos_vias(cliente, invitacion):
     _, token = invitacion
     html = cliente.get(f"/registro?invitacion={token}").text
     assert 'action="/registro"' in html
-    assert 'action="/registro/social/iniciar"' in html
+    assert f'href="/registro/social?invitacion={token}"' in html
     assert "Google" in html
 
 
@@ -510,7 +510,7 @@ def test_iniciar_pinta_los_tres_pasos_con_un_enlace_seguro(cliente, sesion_db, i
 
 
 def test_iniciar_con_invitacion_no_valida(cliente):
-    respuesta = cliente.post("/registro/social/iniciar", data={"invitacion": "no-existe"})
+    respuesta = cliente.get("/registro/social", params={"invitacion": "no-existe"})
     assert respuesta.status_code == 400
     assert "ha caducado o ya se ha usado" in respuesta.text
 
@@ -649,7 +649,7 @@ def test_cuenta_social_conectada(cuenta_social, cliente_autenticado):
     html = cliente_autenticado.get("/token").text
     assert "conectada con Google u otra red social" in html
     assert 'action="/credenciales"' not in html  # sin formulario de contraseña de LaLiga
-    assert 'action="/token/social/iniciar"' in html
+    assert 'href="/token/social"' in html
 
 
 def test_cuenta_social_que_hay_que_reconectar(sesion_db, cuenta_social, cliente_autenticado):
@@ -661,7 +661,7 @@ def test_cuenta_social_que_hay_que_reconectar(sesion_db, cuenta_social, cliente_
 
 
 def _iniciar_reconexion(cliente):
-    return _params(_enlace_login(cliente.post("/token/social/iniciar").text))["state"]
+    return _params(_enlace_login(cliente.get("/token/social").text))["state"]
 
 
 def test_reconexion_correcta(sesion_db, cuenta_social, cliente_autenticado, laliga_canjea, jwt_falso):
@@ -714,7 +714,7 @@ def test_no_se_puede_usar_el_intento_de_otro(sesion_db, cuenta_social, cliente_a
 
 
 def test_una_cuenta_de_contrasena_no_usa_la_reconexion_social(cliente_autenticado):
-    respuesta = cliente_autenticado.post("/token/social/iniciar", follow_redirects=False)
+    respuesta = cliente_autenticado.get("/token/social", follow_redirects=False)
     assert respuesta.headers["location"] == "/token"
 
 
@@ -787,7 +787,7 @@ def test_obtener_o_crear_reutiliza_el_intento_vigente(sesion_db, invitacion):
 
 def test_obtener_o_crear_hace_uno_nuevo_si_el_vigente_caduco(sesion_db, invitacion):
     fila, _ = invitacion
-    viejo, _ = intentos.crear(sesion_db, invitacion_id=fila.id, ahora=datetime.now(timezone.utc) - timedelta(minutes=20))
+    viejo, _ = intentos.crear(sesion_db, invitacion_id=fila.id, ahora=datetime.now(timezone.utc) - timedelta(minutes=40))
     estado_viejo = viejo.state
     nuevo, _ = intentos.obtener_o_crear(sesion_db, invitacion_id=fila.id)
     assert nuevo.state != estado_viejo
@@ -808,3 +808,89 @@ def test_la_direccion_copiada_vale_aunque_reabra_la_invitacion(cliente, sesion_d
 def test_el_paso_1_dice_que_vuelva_a_esta_pestana(cliente, invitacion):
     _, token = invitacion
     assert "vuelve a esta pestaña" in _iniciar(cliente, token).text
+
+
+# --------------------------------------------------------------------------------------
+# Segunda prueba real (T12): Safari recarga la pestaña, errores invisibles, invitaciones
+# mezcladas, intento caducado por segundos.
+
+
+def test_safari_puede_recargar_la_pagina_social_sin_perder_nada(cliente, invitacion):
+    """Al volver a una pestaña descartada, Safari la pide por GET. Antes: 405 y formulario
+    perdido. Ahora: la misma página con el mismo enlace."""
+    _, token = invitacion
+    primera = cliente.get("/registro/social", params={"invitacion": token})
+    recarga = cliente.get("/registro/social", params={"invitacion": token})
+    assert primera.status_code == recarga.status_code == 200
+    assert _enlace_login(recarga.text) == _enlace_login(primera.text)
+    assert 'name="pegado"' in recarga.text
+
+
+def test_tras_un_error_la_recarga_no_da_405(cliente, invitacion, laliga_canjea):
+    _, token = invitacion
+    url = f"/registro/social?invitacion={token}"
+    error = cliente.post(url, data={"invitacion": token, "pegado": "hola", "password": PROPIA, "password2": PROPIA})
+    assert error.status_code == 400
+    assert cliente.get(url).status_code == 200  # lo que hace Safari al restaurar la pestaña
+
+
+def test_el_formulario_envia_a_la_direccion_recargable(cliente, invitacion):
+    _, token = invitacion
+    html = cliente.get("/registro/social", params={"invitacion": token}).text
+    assert f'action="/registro/social?invitacion={token}"' in html
+
+
+@pytest.mark.parametrize("metodo", ["get", "post"])
+def test_las_rutas_antiguas_redirigen_en_vez_de_405(cliente, invitacion, metodo):
+    """Pestañas abiertas con la versión anterior."""
+    _, token = invitacion
+    if metodo == "post":
+        respuesta = cliente.post("/registro/social/iniciar", data={"invitacion": token}, follow_redirects=False)
+    else:
+        respuesta = cliente.get("/registro/social/iniciar", params={"invitacion": token}, follow_redirects=False)
+    assert respuesta.status_code == 303
+    assert respuesta.headers["location"] == f"/registro/social?invitacion={token}"
+
+
+def test_reconexion_recargable(cuenta_social, cliente_autenticado):
+    assert cliente_autenticado.get("/token/social/iniciar", follow_redirects=False).status_code == 303
+    assert cliente_autenticado.get("/token/social").status_code == 200
+
+
+def test_direccion_de_otra_invitacion_lo_dice_claro(cliente, sesion_db, invitacion, laliga_canjea):
+    _, token = invitacion
+    otra, token_otra = invitaciones.crear(sesion_db)
+    try:
+        state_otra = _params(_enlace_login(_iniciar(cliente, token_otra).text))["state"]
+        respuesta = _alta_web(cliente, token, f"https://jwt.ms/#state={state_otra}&code=C")
+        assert respuesta.status_code == 400
+        assert "es de otro enlace de invitación" in respuesta.text
+    finally:
+        sesion_db.execute(delete(Invitacion).where(Invitacion.id == otra.id))
+        sesion_db.commit()
+
+
+def test_el_error_se_ve_tambien_junto_al_boton(cliente, invitacion, laliga_canjea):
+    _, token = invitacion
+    html = _alta_web(cliente, token, "hola").text
+    formulario = html.split('name="pegado"', 1)[1]
+    assert "página de Microsoft" in formulario.split("Crear mi cuenta", 1)[0]
+
+
+def test_el_motivo_del_rechazo_queda_en_el_log(cliente, invitacion, laliga_canjea, caplog):
+    caplog.set_level(logging.INFO, logger="fantasy.auth.rutas")
+    _, token = invitacion
+    _alta_web(cliente, token, "hola")
+    assert "alta social rechazada: DireccionNoValida" in caplog.text
+
+
+def test_toda_clase_de_color_usada_esta_definida_en_el_css():
+    """Las de Pico viven en un CSS que no se carga: sin definirlas, los errores salían como
+    texto gris normal."""
+    raiz = Path(__file__).resolve().parent.parent / "src/fantasy/api"
+    usadas = set()
+    for plantilla in (raiz / "templates").glob("*.html"):
+        usadas |= set(re.findall(r"pico-color-[a-z]+-\d+", plantilla.read_text()))
+    css = (raiz / "static/estilos.css").read_text()
+    assert usadas, "no se encontraron clases de color: el test no está mirando nada"
+    assert not [c for c in usadas if f".{c}" not in css]

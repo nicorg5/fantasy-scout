@@ -17,7 +17,7 @@
 LaLiga. <a href="/login">Entra aquí</a>.</p>
 {% endif %}
 
-{% with accion_iniciar="/registro/social/iniciar", accion_enviar="/registro/social",
+{% with accion_iniciar=url_social, accion_enviar=url_social,
         campos_ocultos={"invitacion": invitacion}, con_contrasena=True %}
 {% include "_pasos_social.html" %}
 {% endwith %}
@@ -57,10 +57,8 @@ guardar "en un solo sentido" como una contraseña normal. Nunca se muestran ni s
 <article class="otra-via">
   <p><strong>¿Entras en LaLiga con Google, Apple u otra red social?</strong> Entonces no
   tienes contraseña de LaLiga: usa esta opción.</p>
-  <form method="post" action="/registro/social/iniciar" class="en-linea">
-    <input type="hidden" name="invitacion" value="{{ invitacion }}">
-    <button type="submit" class="secondary">Entro en LaLiga con Google u otra red social</button>
-  </form>
+  {# GET: la página social tiene su propia dirección y se puede recargar. #}
+  <a href="/registro/social?invitacion={{ invitacion | urlencode }}" role="button" class="secondary">Entro en LaLiga con Google u otra red social</a>
 </article>
 {% endif %}
 {% endblock %}

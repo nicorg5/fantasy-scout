@@ -23,14 +23,12 @@
   solos, no tienes que hacer nada.</p>
   {% endif %}
   {% if reconectar or mostrar_pasos %}
-  {% with accion_iniciar="/token/social/iniciar", accion_enviar="/token/social",
+  {% with accion_iniciar="/token/social", accion_enviar="/token/social",
           campos_ocultos={}, con_contrasena=False %}
   {% include "_pasos_social.html" %}
   {% endwith %}
   {% else %}
-  <form method="post" action="/token/social/iniciar" class="en-linea">
-    <button type="submit" class="secondary">Volver a conectar</button>
-  </form>
+  <a href="/token/social" role="button" class="secondary">Volver a conectar</a>
   {% endif %}
   {% elif tiene_credenciales and not rechazadas %}
   <p>Tu cuenta de LaLiga está conectada: tus datos se actualizan solos, no tienes que hacer nada.</p>

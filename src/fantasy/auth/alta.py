@@ -47,6 +47,11 @@ class IntentoNoValido(Exception):
     (caducado o ya usado). En todos los casos: volver al paso 1."""
 
 
+class IntentoDeOtraInvitacion(IntentoNoValido):
+    """La dirección pegada es de un intento de OTRA invitación: el usuario ha mezclado
+    enlaces. Se distingue para decírselo claro."""
+
+
 class SinEmail(Exception):
     """El token de LaLiga no trae email: no hay con qué crear la cuenta."""
 
@@ -117,8 +122,10 @@ def dar_de_alta_social(
         if invitacion is None:
             raise EnlaceNoValido()
         intento = intentos.buscar_vigente(sesion, state)
-        if intento is None or intento.invitacion_id != invitacion.id:
+        if intento is None:
             raise IntentoNoValido()
+        if intento.invitacion_id != invitacion.id:
+            raise IntentoDeOtraInvitacion()
         verificador = intentos.consumir(sesion, intento)
 
         try:

@@ -18,10 +18,7 @@ Edge.</p>
     paso 2, <strong>vuelve a esta pestaña</strong> con el botón de pestañas del navegador.</p>
     <a href="{{ url_login }}" target="_blank" rel="noopener noreferrer" role="button">Abrir el login de LaLiga</a>
     {% else %}
-    <form method="post" action="{{ accion_iniciar }}" class="en-linea">
-      {% for nombre, valor in campos_ocultos.items() %}<input type="hidden" name="{{ nombre }}" value="{{ valor }}">{% endfor %}
-      <button type="submit">Abrir el login de LaLiga</button>
-    </form>
+    <a href="{{ accion_iniciar }}" role="button">Abrir el login de LaLiga</a>
     {% endif %}
   </li>
   <li>
@@ -45,6 +42,10 @@ Edge.</p>
       <small id="aviso-pegar" hidden>No hemos podido leer el portapapeles. Mantén pulsado el
       campo y elige Pegar (en ordenador, Ctrl+V o Cmd+V).</small>
 
+      {% if error %}
+      {# Repetido junto al botón: es donde está mirando quien acaba de pulsarlo. #}
+      <p role="alert" class="pico-color-red-500">{{ error }}</p>
+      {% endif %}
       {% if con_contrasena %}
       <p>Tu cuenta usará el email de tu cuenta de LaLiga. Para entrar después en fantasy-scout
       necesitas una contraseña propia, que no es la de Google:</p>

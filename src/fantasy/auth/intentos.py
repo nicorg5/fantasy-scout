@@ -1,7 +1,7 @@
 """Intentos de conexión social, entre el enlace a LaLiga y la dirección pegada
 (specs/registro-social, D2).
 
-Cada intento guarda su verificador PKCE cifrado y caduca a los 15 minutos. Se busca por el
+Cada intento guarda su verificador PKCE cifrado y caduca a los 30 minutos. Se busca por el
 `state` que viaja en la dirección de vuelta, así que funciona aunque el usuario pegue en
 otro navegador. Se borra en la misma transacción que crea la cuenta: si el canje falla,
 sigue vivo hasta caducar, y el usuario puede reabrir el mismo enlace de LaLiga.
@@ -21,7 +21,10 @@ from fantasy.auth import laliga_login
 from fantasy.config import obtener_config
 from fantasy.storage.modelos import IntentoConexion
 
-CADUCIDAD_INTENTO = timedelta(minutes=15)
+# 30 y no 15: en la primera alta real, entre abrir LaLiga, entrar con Google, copiar y
+# volver, el intento caducó por 5 segundos. Más margen no resta seguridad: el código de
+# LaLiga es de un solo uso y va atado al verificador PKCE (specs/registro-social T12).
+CADUCIDAD_INTENTO = timedelta(minutes=30)
 
 
 def _fernet() -> Fernet:

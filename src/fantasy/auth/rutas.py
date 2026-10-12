@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import urllib.parse
 import uuid
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -336,6 +337,10 @@ SOCIAL_DIRECCION_NO_VALIDA = (
 )
 SOCIAL_LALIGA_NO_COMPLETA = "LaLiga no ha completado el inicio de sesión. Vuelve al paso 1 e inténtalo otra vez."
 SOCIAL_INTENTO_NO_VALIDO = "Este intento ha caducado o ya se ha usado. Vuelve al paso 1."
+SOCIAL_OTRA_INVITACION = (
+    "Esa dirección es de otro enlace de invitación. Usa siempre el mismo enlace con el que "
+    "empezaste, o vuelve al paso 1 desde esta página."
+)
 SOCIAL_OTRA_CUENTA = (
     "Has entrado con otra cuenta de LaLiga, no con la que tenías conectada. Vuelve al paso 1 "
     "y elige la cuenta de siempre."
@@ -353,30 +358,44 @@ def contexto_navegador(request: Request) -> dict[str, bool]:
     }
 
 
-def _url_de_intento(intento) -> str:
-    return laliga_login.url_login_social(intento.state, intentos.verificador(intento))
+def _url_social(token: str | None) -> str:
+    """Dirección propia de la vía social, con la invitación en la URL. Así Safari puede
+    recargarla (lo hace al volver a una pestaña descartada) sin acabar en un 405 y perder
+    el formulario (descubierto en la primera alta real, specs/registro-social T12)."""
+    return "/registro/social?" + urllib.parse.urlencode({"invitacion": token or ""})
 
 
-def _pagina_social(request: Request, token: str, *, url_login: str | None, codigo: int = 200, **extra):
-    """Los tres pasos. Sin `url_login` (intento perdido o caducado) el paso 1 es un botón que
-    crea uno nuevo. Lo pegado **nunca** se devuelve: lleva el código de LaLiga (S7)."""
+def _pagina_social(request: Request, sesion: Session, token: str, *, codigo: int = 200, **extra):
+    """Los tres pasos, siempre con un enlace vigente: el intento de esta invitación si sigue
+    vivo, o uno nuevo. Lo pegado **nunca** se devuelve: lleva el código de LaLiga (S7)."""
+    fila = invitaciones.buscar_pendiente(sesion, token)
+    if fila is None:
+        return _pagina_registro(request, token, valida=False, codigo=400)
+    _, url_login = intentos.obtener_o_crear(sesion, invitacion_id=fila.id)
     return _pagina_registro(
         request, token, valida=True, codigo=codigo, via="social", url_login=url_login,
-        **contexto_navegador(request), **extra,
+        url_social=_url_social(token), **contexto_navegador(request), **extra,
     )
 
 
-@router.post("/registro/social/iniciar")
-def iniciar_registro_social(
+@router.get("/registro/social")
+def pantalla_registro_social(
     request: Request,
-    invitacion: str = Form(""),
+    invitacion: str | None = None,
     sesion: Session = Depends(obtener_sesion),
 ):
-    fila = invitaciones.buscar_pendiente(sesion, invitacion)
-    if fila is None:
-        return _pagina_registro(request, invitacion, valida=False, codigo=400)
-    _, url_login = intentos.obtener_o_crear(sesion, invitacion_id=fila.id)
-    return _pagina_social(request, invitacion, url_login=url_login)
+    """GET a propósito: recargar, volver atrás o reabrir la pestaña deja al usuario en el
+    mismo punto, con el mismo intento (que se reutiliza mientras esté vigente)."""
+    return _pagina_social(request, sesion, invitacion or "")
+
+
+@router.api_route("/registro/social/iniciar", methods=["GET", "POST"])
+async def iniciar_registro_social(request: Request):
+    """Compatibilidad con páginas ya abiertas de la versión anterior (formulario POST, o su
+    recarga por GET): todo lleva a la dirección propia de la vía social."""
+    formulario = await request.form() if request.method == "POST" else {}
+    token = formulario.get("invitacion") or request.query_params.get("invitacion") or ""
+    return RedirectResponse(url=_url_social(str(token)), status_code=303)
 
 
 @router.post("/registro/social")
@@ -388,16 +407,28 @@ def procesar_registro_social(
     password2: str = Form(""),
     sesion: Session = Depends(obtener_sesion),
 ):
+    invitacion = invitacion or request.query_params.get("invitacion", "")
     try:
         usuario = alta.dar_de_alta_social(sesion, invitacion, pegado, password, password2)
     except alta.EnlaceNoValido:
+        _anotar_rechazo_social("alta", "EnlaceNoValido")
         return _pagina_registro(request, invitacion, valida=False, codigo=400)
     except alta.YaTieneCuenta:
-        return _pagina_social(request, invitacion, url_login=None, codigo=409, ya_tiene_cuenta=True)
+        _anotar_rechazo_social("alta", "YaTieneCuenta")
+        return _pagina_social(request, sesion, invitacion, codigo=409, ya_tiene_cuenta=True)
     except (alta.ContrasenaNoValida, alta.DireccionNoValida, laliga_login.ErrorEnLaDireccion,
             alta.IntentoNoValido, alta.SinEmail, laliga_login.LoginNoDisponible) as exc:
-        return _respuesta_error_social(request, sesion, invitacion, pegado, exc)
+        error, codigo = _mensaje_error_social(exc)
+        _anotar_rechazo_social("alta", type(exc).__name__)
+        return _pagina_social(request, sesion, invitacion, codigo=codigo, error=error)
     return _entrar(usuario.id)
+
+
+def _anotar_rechazo_social(via: str, motivo: str) -> None:
+    """Deja en el log de Render **por qué** se rechazó un intento: solo el tipo de error,
+    nunca la dirección pegada, el código ni la contraseña. Sin esto, la primera alta real
+    fallida no dejó rastro de su motivo (specs/registro-social T12)."""
+    logger.info("%s social rechazada: %s", via, motivo)
 
 
 def _mensaje_error_social(exc: Exception) -> tuple[str, int]:
@@ -409,6 +440,8 @@ def _mensaje_error_social(exc: Exception) -> tuple[str, int]:
     elif isinstance(exc, laliga_login.ErrorEnLaDireccion):
         logger.info("LaLiga devolvió un error en la dirección social: %s", exc)  # sin código ni credenciales
         error, codigo = SOCIAL_LALIGA_NO_COMPLETA, 400
+    elif isinstance(exc, alta.IntentoDeOtraInvitacion):
+        error, codigo = SOCIAL_OTRA_INVITACION, 400
     elif isinstance(exc, alta.IntentoNoValido):
         error, codigo = SOCIAL_INTENTO_NO_VALIDO, 400
     elif isinstance(exc, alta.SinEmail):
@@ -420,41 +453,31 @@ def _mensaje_error_social(exc: Exception) -> tuple[str, int]:
     return error, codigo
 
 
-def _intento_vivo_de(sesion: Session, pegado: str):
-    """El intento de lo pegado, si sigue vivo (el canje falló y el rollback lo devolvió):
-    así el paso 1 vuelve a llevar al mismo enlace."""
-    try:
-        state, _ = laliga_login.extraer_codigo(pegado)
-    except (laliga_login.DireccionSinCodigo, laliga_login.ErrorEnLaDireccion):
-        return None
-    return intentos.buscar_vigente(sesion, state)
-
-
-def _respuesta_error_social(request: Request, sesion: Session, invitacion: str, pegado: str, exc: Exception):
-    error, codigo = _mensaje_error_social(exc)
-    intento = _intento_vivo_de(sesion, pegado)
-    fila = invitaciones.buscar_pendiente(sesion, invitacion)
-    url_login = None
-    if intento is not None and fila is not None and intento.invitacion_id == fila.id:
-        url_login = _url_de_intento(intento)
-    return _pagina_social(request, invitacion, url_login=url_login, codigo=codigo, error=error)
-
-
-
 # --------------------------------------------------------------------------------------
 # Reconexión de una cuenta social desde Cuenta (specs/registro-social, S10-S11)
 
 
-@router.post("/token/social/iniciar")
-def iniciar_reconexion_social(
+def _pagina_reconexion(request: Request, sesion: Session, usuario: Usuario, **extra):
+    _, url_login = intentos.obtener_o_crear(sesion, usuario_id=usuario.id)
+    return _pagina_token(request, sesion, usuario, url_login=url_login, mostrar_pasos=True, **extra)
+
+
+@router.get("/token/social")
+def pantalla_reconexion_social(
     request: Request,
     usuario: Usuario = Depends(usuario_actual),
     sesion: Session = Depends(obtener_sesion),
 ):
+    """GET por lo mismo que `/registro/social`: que recargar no rompa nada."""
     if not es_social(buscar_credenciales(sesion, usuario.id)):
         return RedirectResponse(url="/token", status_code=302)
-    _, url_login = intentos.obtener_o_crear(sesion, usuario_id=usuario.id)
-    return _pagina_token(request, sesion, usuario, url_login=url_login, mostrar_pasos=True)
+    return _pagina_reconexion(request, sesion, usuario)
+
+
+@router.api_route("/token/social/iniciar", methods=["GET", "POST"])
+def iniciar_reconexion_social():
+    """Compatibilidad con páginas de la versión anterior."""
+    return RedirectResponse(url="/token/social", status_code=303)
 
 
 @router.post("/token/social")
@@ -471,8 +494,6 @@ def procesar_reconexion_social(
     except (alta.DireccionNoValida, laliga_login.ErrorEnLaDireccion, alta.IntentoNoValido,
             reconexion.OtraCuenta, laliga_login.LoginNoDisponible) as exc:
         error, codigo = _mensaje_error_social(exc)
-        intento = _intento_vivo_de(sesion, pegado)
-        url_login = _url_de_intento(intento) if intento is not None and intento.usuario_id == usuario.id else None
-        return _pagina_token(request, sesion, usuario, url_login=url_login, mostrar_pasos=True,
-                             error=error, _codigo=codigo)
+        _anotar_rechazo_social("reconexión", type(exc).__name__)
+        return _pagina_reconexion(request, sesion, usuario, error=error, _codigo=codigo)
     return RedirectResponse(url="/plantilla", status_code=302)
