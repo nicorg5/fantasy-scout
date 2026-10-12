@@ -194,6 +194,9 @@ class DetalleUsuario:
     user_id: uuid.UUID
     email: str
     alta: datetime  # `user.creado_en`: cuándo se creó la cuenta (specs/registro)
+    # `laliga_credentials.tipo` ("password" / "social"), o None si no tiene conexión
+    # automática con LaLiga (specs/registro-social, S14).
+    tipo_cuenta: str | None
     ultima_visita: datetime | None
     sesiones: int
     seccion_favorita: str | None
@@ -243,18 +246,21 @@ def detalle_por_usuario(
     )
 
     usuarios = sesion.execute(
-        select(Usuario.id, Usuario.email, Usuario.creado_en).order_by(Usuario.email)
+        select(Usuario.id, Usuario.email, Usuario.creado_en, CredencialesLaLiga.tipo)
+        .outerjoin(CredencialesLaLiga, CredencialesLaLiga.user_id == Usuario.id)
+        .order_by(Usuario.email)
     ).all()
     detalle = [
         DetalleUsuario(
             user_id=uid,
             email=email,
             alta=alta,
+            tipo_cuenta=tipo,
             ultima_visita=ultima.get(uid),
             sesiones=n_sesiones.get(uid, 0),
             seccion_favorita=favorita.get(uid),
         )
-        for uid, email, alta in usuarios
+        for uid, email, alta, tipo in usuarios
     ]
     # Los más recientes arriba; quien nunca entró, al final.
     return sorted(detalle, key=lambda d: d.ultima_visita or _NUNCA, reverse=True)

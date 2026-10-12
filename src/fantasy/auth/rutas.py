@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -10,15 +11,18 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from fantasy.auth import alta, invitaciones
+from fantasy.auth import alta, intentos, invitaciones, reconexion
 from fantasy.auth.admin import administrador
 from fantasy.auth.dependencias import usuario_actual
 from fantasy.auth.passwords import normalizar_email, verificar_password
 from fantasy.auth.sesiones import NOMBRE_COOKIE, crear_valor_cookie
 from fantasy.auth import laliga_login
 from fantasy.auth.credenciales_store import (
+    EstadoConexion,
     borrar_credenciales,
-    credenciales_rechazadas,
+    buscar_credenciales,
+    es_social,
+    estado_conexion,
     guardar_credenciales,
     obtener_token_valido,
     resincronizar_password,
@@ -27,7 +31,9 @@ from fantasy.auth.credenciales_store import (
 from fantasy.auth.token_store import guardar_token
 from fantasy.config import obtener_config
 from fantasy.storage.engine import obtener_sesion
-from fantasy.storage.modelos import Usuario
+from fantasy.storage.modelos import CredencialesLaLiga, Usuario
+
+logger = logging.getLogger("fantasy.auth.rutas")
 
 router = APIRouter()
 
@@ -109,7 +115,13 @@ def _pagina_token(request, sesion, usuario, **extra):
         "tiene_credenciales": tiene_credenciales(sesion, usuario.id),
         # LaLiga rechaza la contraseña guardada: se pide la nueva en vez de decir
         # "conectada" (specs/registro, A19).
-        "rechazadas": credenciales_rechazadas(sesion, usuario.id),
+        "rechazadas": estado_conexion(sesion, usuario.id) is EstadoConexion.CONTRASENA_CAMBIADA,
+        # Cuenta social (specs/registro-social, S10): sin formulario de contraseña.
+        "social": es_social(buscar_credenciales(sesion, usuario.id)),
+        "reconectar": estado_conexion(sesion, usuario.id) is EstadoConexion.RECONECTAR,
+        "url_login": None,
+        "mostrar_pasos": False,
+        **contexto_navegador(request),
     }
     contexto.update(extra)
     codigo = contexto.pop("_codigo", 200)
@@ -207,10 +219,12 @@ def url_publica(request: Request, ruta: str) -> str:
 def _pagina_invitaciones(request: Request, sesion: Session, enlace_nuevo: str | None = None):
     assert _templates is not None
     filas = [(i, invitaciones.estado(i)) for i in invitaciones.listar(sesion)]
+    # Vía con la que se dio de alta cada cuenta (specs/registro-social, S14).
+    tipos = dict(sesion.execute(select(CredencialesLaLiga.user_id, CredencialesLaLiga.tipo)).all())
     return _templates.TemplateResponse(
         request=request,
         name="invitaciones.html",
-        context={"titulo": "Invitación", "filas": filas, "enlace_nuevo": enlace_nuevo},
+        context={"titulo": "Invitación", "filas": filas, "enlace_nuevo": enlace_nuevo, "tipos": tipos},
     )
 
 
@@ -254,9 +268,8 @@ def revocar_invitacion(
 # ayuda al invitado y le contaría a un curioso qué enlaces existen.
 ENLACE_NO_VALIDO = "Este enlace ha caducado o ya se ha usado. Pide otro a quien te lo mandó."
 LALIGA_RECHAZA = (
-    "LaLiga no reconoce ese email y contraseña. Si entras en LaLiga Fantasy con Google o "
-    "Apple, crea una contraseña desde «He olvidado mi contraseña» en laligafantasy.com y "
-    "vuelve a este mismo enlace. Si aun así no funciona, escribe a quien te invitó."
+    "LaLiga no reconoce ese email y contraseña. Si entras en LaLiga Fantasy con Google, "
+    "Apple u otra red social, usa la otra opción de esta página."
 )
 LALIGA_NO_RESPONDE = "No hemos podido contactar con LaLiga. Inténtalo de nuevo en un rato."
 
@@ -265,6 +278,7 @@ def _pagina_registro(request: Request, token: str | None, *, valida: bool, codig
     assert _templates is not None
     contexto = {
         "titulo": "Crear tu cuenta",
+        "via": "password",
         "valida": valida,
         "invitacion": token if valida else None,
         "email": "",
@@ -307,3 +321,158 @@ def procesar_registro(
     except laliga_login.LoginNoDisponible:
         return _pagina_registro(request, invitacion, valida=True, codigo=503, email=email, error=LALIGA_NO_RESPONDE)
     return _entrar(usuario.id)
+
+
+# --------------------------------------------------------------------------------------
+# Alta con Google u otra red social (specs/registro-social, D6-D7)
+
+# Navegadores integrados en apps: Google no deja iniciar sesión dentro de ellos.
+_NAVEGADORES_INTEGRADOS = ("WhatsApp", "Instagram", "FBAN", "FBAV", "FB_IAB")
+_MOVILES = ("iPhone", "iPad", "Android", "Mobile")
+
+SOCIAL_DIRECCION_NO_VALIDA = (
+    "Eso no parece la dirección de la página de Microsoft. Copia la dirección completa de la "
+    "barra, la que empieza por https://jwt.ms/"
+)
+SOCIAL_LALIGA_NO_COMPLETA = "LaLiga no ha completado el inicio de sesión. Vuelve al paso 1 e inténtalo otra vez."
+SOCIAL_INTENTO_NO_VALIDO = "Este intento ha caducado o ya se ha usado. Vuelve al paso 1."
+SOCIAL_OTRA_CUENTA = (
+    "Has entrado con otra cuenta de LaLiga, no con la que tenías conectada. Vuelve al paso 1 "
+    "y elige la cuenta de siempre."
+)
+SOCIAL_SIN_EMAIL = "Tu cuenta de LaLiga no nos ha dado un email, así que no podemos crearla. Escribe a quien te invitó."
+
+
+def contexto_navegador(request: Request) -> dict[str, bool]:
+    """Solo para ajustar textos (S18): nada depende de un navegador concreto. La detección
+    por `User-Agent` es aproximada, así que el aviso de navegador integrado nunca bloquea."""
+    agente = request.headers.get("user-agent", "")
+    return {
+        "navegador_integrado": any(m in agente for m in _NAVEGADORES_INTEGRADOS),
+        "es_movil": any(m in agente for m in _MOVILES),
+    }
+
+
+def _url_de_intento(intento) -> str:
+    return laliga_login.url_login_social(intento.state, intentos.verificador(intento))
+
+
+def _pagina_social(request: Request, token: str, *, url_login: str | None, codigo: int = 200, **extra):
+    """Los tres pasos. Sin `url_login` (intento perdido o caducado) el paso 1 es un botón que
+    crea uno nuevo. Lo pegado **nunca** se devuelve: lleva el código de LaLiga (S7)."""
+    return _pagina_registro(
+        request, token, valida=True, codigo=codigo, via="social", url_login=url_login,
+        **contexto_navegador(request), **extra,
+    )
+
+
+@router.post("/registro/social/iniciar")
+def iniciar_registro_social(
+    request: Request,
+    invitacion: str = Form(""),
+    sesion: Session = Depends(obtener_sesion),
+):
+    fila = invitaciones.buscar_pendiente(sesion, invitacion)
+    if fila is None:
+        return _pagina_registro(request, invitacion, valida=False, codigo=400)
+    _, url_login = intentos.crear(sesion, invitacion_id=fila.id)
+    return _pagina_social(request, invitacion, url_login=url_login)
+
+
+@router.post("/registro/social")
+def procesar_registro_social(
+    request: Request,
+    invitacion: str = Form(""),
+    pegado: str = Form(""),
+    password: str = Form(""),
+    password2: str = Form(""),
+    sesion: Session = Depends(obtener_sesion),
+):
+    try:
+        usuario = alta.dar_de_alta_social(sesion, invitacion, pegado, password, password2)
+    except alta.EnlaceNoValido:
+        return _pagina_registro(request, invitacion, valida=False, codigo=400)
+    except alta.YaTieneCuenta:
+        return _pagina_social(request, invitacion, url_login=None, codigo=409, ya_tiene_cuenta=True)
+    except (alta.ContrasenaNoValida, alta.DireccionNoValida, laliga_login.ErrorEnLaDireccion,
+            alta.IntentoNoValido, alta.SinEmail, laliga_login.LoginNoDisponible) as exc:
+        return _respuesta_error_social(request, sesion, invitacion, pegado, exc)
+    return _entrar(usuario.id)
+
+
+def _mensaje_error_social(exc: Exception) -> tuple[str, int]:
+    """Cada error de la vía social, en lenguaje llano y con su código HTTP."""
+    if isinstance(exc, alta.ContrasenaNoValida):
+        error, codigo = str(exc), 400
+    elif isinstance(exc, alta.DireccionNoValida):
+        error, codigo = SOCIAL_DIRECCION_NO_VALIDA, 400
+    elif isinstance(exc, laliga_login.ErrorEnLaDireccion):
+        logger.info("LaLiga devolvió un error en la dirección social: %s", exc)  # sin código ni credenciales
+        error, codigo = SOCIAL_LALIGA_NO_COMPLETA, 400
+    elif isinstance(exc, alta.IntentoNoValido):
+        error, codigo = SOCIAL_INTENTO_NO_VALIDO, 400
+    elif isinstance(exc, alta.SinEmail):
+        error, codigo = SOCIAL_SIN_EMAIL, 400
+    elif isinstance(exc, reconexion.OtraCuenta):
+        error, codigo = SOCIAL_OTRA_CUENTA, 400
+    else:
+        error, codigo = LALIGA_NO_RESPONDE, 503
+    return error, codigo
+
+
+def _intento_vivo_de(sesion: Session, pegado: str):
+    """El intento de lo pegado, si sigue vivo (el canje falló y el rollback lo devolvió):
+    así el paso 1 vuelve a llevar al mismo enlace."""
+    try:
+        state, _ = laliga_login.extraer_codigo(pegado)
+    except (laliga_login.DireccionSinCodigo, laliga_login.ErrorEnLaDireccion):
+        return None
+    return intentos.buscar_vigente(sesion, state)
+
+
+def _respuesta_error_social(request: Request, sesion: Session, invitacion: str, pegado: str, exc: Exception):
+    error, codigo = _mensaje_error_social(exc)
+    intento = _intento_vivo_de(sesion, pegado)
+    fila = invitaciones.buscar_pendiente(sesion, invitacion)
+    url_login = None
+    if intento is not None and fila is not None and intento.invitacion_id == fila.id:
+        url_login = _url_de_intento(intento)
+    return _pagina_social(request, invitacion, url_login=url_login, codigo=codigo, error=error)
+
+
+
+# --------------------------------------------------------------------------------------
+# Reconexión de una cuenta social desde Cuenta (specs/registro-social, S10-S11)
+
+
+@router.post("/token/social/iniciar")
+def iniciar_reconexion_social(
+    request: Request,
+    usuario: Usuario = Depends(usuario_actual),
+    sesion: Session = Depends(obtener_sesion),
+):
+    if not es_social(buscar_credenciales(sesion, usuario.id)):
+        return RedirectResponse(url="/token", status_code=302)
+    _, url_login = intentos.crear(sesion, usuario_id=usuario.id)
+    return _pagina_token(request, sesion, usuario, url_login=url_login, mostrar_pasos=True)
+
+
+@router.post("/token/social")
+def procesar_reconexion_social(
+    request: Request,
+    pegado: str = Form(""),
+    usuario: Usuario = Depends(usuario_actual),
+    sesion: Session = Depends(obtener_sesion),
+):
+    try:
+        reconexion.reconectar_social(sesion, usuario, pegado)
+    except reconexion.NoEsSocial:
+        return RedirectResponse(url="/token", status_code=302)
+    except (alta.DireccionNoValida, laliga_login.ErrorEnLaDireccion, alta.IntentoNoValido,
+            reconexion.OtraCuenta, laliga_login.LoginNoDisponible) as exc:
+        error, codigo = _mensaje_error_social(exc)
+        intento = _intento_vivo_de(sesion, pegado)
+        url_login = _url_de_intento(intento) if intento is not None and intento.usuario_id == usuario.id else None
+        return _pagina_token(request, sesion, usuario, url_login=url_login, mostrar_pasos=True,
+                             error=error, _codigo=codigo)
+    return RedirectResponse(url="/plantilla", status_code=302)

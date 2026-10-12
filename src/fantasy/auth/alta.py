@@ -1,4 +1,7 @@
-"""Alta de un usuario a partir de una invitación (specs/registro, D3).
+"""Alta de un usuario a partir de una invitación (specs/registro, D3; specs/registro-social, D4).
+
+Dos vías: con la contraseña de LaLiga (`dar_de_alta`) o con Google u otra red social
+(`dar_de_alta_social`).
 
 Una sola transacción: o queda todo (usuario, credenciales, token e invitación usada) o no
 queda nada. La lógica no conoce HTTP: devuelve el usuario o lanza, y la ruta traduce.
@@ -13,9 +16,13 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from fantasy.auth import invitaciones, laliga_login
-from fantasy.auth.credenciales_store import escribir_credenciales, escribir_tokens
-from fantasy.auth.passwords import hashear_password, normalizar_email
+from fantasy.auth import intentos, invitaciones, laliga_login
+from fantasy.auth.credenciales_store import (
+    escribir_credenciales,
+    escribir_credenciales_social,
+    escribir_tokens,
+)
+from fantasy.auth.passwords import hashear_password, normalizar_email, problema_con_password_nueva
 from fantasy.storage.modelos import Usuario
 
 
@@ -25,6 +32,23 @@ class EnlaceNoValido(Exception):
 
 class YaTieneCuenta(Exception):
     """Ese email ya tiene cuenta: tiene que entrar por /login, no darse de alta (A12)."""
+
+
+class ContrasenaNoValida(Exception):
+    """La contraseña nueva de fantasy-scout no vale. Lleva el motivo para el usuario."""
+
+
+class DireccionNoValida(Exception):
+    """Lo pegado no es la dirección de la página de vuelta (no trae código)."""
+
+
+class IntentoNoValido(Exception):
+    """El intento no existe, caducó, es de otra invitación, o LaLiga no aceptó el código
+    (caducado o ya usado). En todos los casos: volver al paso 1."""
+
+
+class SinEmail(Exception):
+    """El token de LaLiga no trae email: no hay con qué crear la cuenta."""
 
 
 def dar_de_alta(sesion: Session, token: str | None, email: str, password: str) -> Usuario:
@@ -57,6 +81,64 @@ def dar_de_alta(sesion: Session, token: str | None, email: str, password: str) -
         sesion.commit()
     except IntegrityError:
         # Otra alta con el mismo email y OTRA invitación ha confirmado justo antes.
+        sesion.rollback()
+        raise YaTieneCuenta() from None
+    except BaseException:
+        sesion.rollback()
+        raise
+    return usuario
+
+
+def dar_de_alta_social(
+    sesion: Session, token: str | None, pegado: str, password: str, repetida: str
+) -> Usuario:
+    """Alta con Google u otra red social (specs/registro-social, D4).
+
+    Lanza `ContrasenaNoValida`, `DireccionNoValida`, `laliga_login.ErrorEnLaDireccion`,
+    `EnlaceNoValido`, `IntentoNoValido`, `laliga_login.LoginNoDisponible`, `SinEmail` o
+    `YaTieneCuenta`. En todos los casos la invitación sigue como estaba.
+
+    Mismo bloqueo que `dar_de_alta`, que es lo que impide dos altas con el mismo enlace,
+    también si cada una va por una vía distinta (S6). A diferencia de esa vía, el email se
+    conoce **después** de canjear: si ya tiene cuenta, el código queda gastado, pero esa
+    persona ya tiene cuenta y no necesita otro.
+    """
+    # Antes de tocar nada: no tiene sentido gastar el código por un fallo de tecleo.
+    motivo = problema_con_password_nueva(password, repetida)
+    if motivo:
+        raise ContrasenaNoValida(motivo)
+    try:
+        state, code = laliga_login.extraer_codigo(pegado)
+    except laliga_login.DireccionSinCodigo:
+        raise DireccionNoValida() from None
+
+    try:
+        invitacion = invitaciones.buscar_pendiente(sesion, token, bloquear=True)
+        if invitacion is None:
+            raise EnlaceNoValido()
+        intento = intentos.buscar_vigente(sesion, state)
+        if intento is None or intento.invitacion_id != invitacion.id:
+            raise IntentoNoValido()
+        verificador = intentos.consumir(sesion, intento)
+
+        try:
+            social = laliga_login.canjear_codigo(code, verificador)
+        except laliga_login.CredencialesInvalidas:
+            raise IntentoNoValido() from None
+        if not social.email:
+            raise SinEmail()
+        email = normalizar_email(social.email)
+        if sesion.scalar(select(Usuario.id).where(Usuario.email == email)) is not None:
+            raise YaTieneCuenta()
+
+        usuario = Usuario(email=email, password_hash=hashear_password(password))
+        sesion.add(usuario)
+        sesion.flush()
+        credenciales = escribir_credenciales_social(sesion, usuario.id, email, social.oid)
+        escribir_tokens(sesion, usuario.id, social.tokens, credenciales)
+        invitaciones.marcar_usada(invitacion, usuario.id)
+        sesion.commit()
+    except IntegrityError:
         sesion.rollback()
         raise YaTieneCuenta() from None
     except BaseException:

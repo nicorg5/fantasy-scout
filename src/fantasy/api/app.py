@@ -25,7 +25,12 @@ from fantasy.auth.rutas import router as auth_router
 from fantasy.observabilidad.middleware import registrar_uso
 from fantasy.observabilidad.rutas import montar_templates as montar_templates_uso
 from fantasy.observabilidad.rutas import router as uso_router
-from fantasy.official.errores import CredencialesRechazadas, ErrorAPIOficial, TokenInvalido
+from fantasy.official.errores import (
+    ConexionCaducada,
+    CredencialesRechazadas,
+    ErrorAPIOficial,
+    TokenInvalido,
+)
 from fantasy.storage.engine import obtener_sesion
 from fantasy.storage.modelos import Usuario
 
@@ -71,10 +76,15 @@ def raiz() -> RedirectResponse:
 # Sin tecnicismos: quien llega por invitación no sabe qué es un token (specs/registro, D10).
 AVISO_SIN_CONEXION = "No hemos podido conectar con tu cuenta de LaLiga. Revísala para ver tus datos."
 AVISO_CONTRASENA_CAMBIADA = "Tu contraseña de LaLiga ha cambiado: vuelve a conectarla para ver tus datos."
+AVISO_CONEXION_CADUCADA = "Tu conexión con LaLiga ha caducado: vuelve a conectarla para ver tus datos."
 
 
 def _aviso_token(exc: TokenInvalido) -> str:
-    return AVISO_CONTRASENA_CAMBIADA if isinstance(exc, CredencialesRechazadas) else AVISO_SIN_CONEXION
+    if isinstance(exc, CredencialesRechazadas):
+        return AVISO_CONTRASENA_CAMBIADA
+    if isinstance(exc, ConexionCaducada):
+        return AVISO_CONEXION_CADUCADA
+    return AVISO_SIN_CONEXION
 
 
 def _pagina_de_jugadores(request, plantilla_html: str, titulo: str, cargar, sesion=None):

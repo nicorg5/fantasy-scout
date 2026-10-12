@@ -32,7 +32,7 @@ el canal que quieras: quien lo abra solo necesita su email y contraseña de LaLi
         <td class="celda-principal" data-etiqueta="Creada">{{ invitacion.creada_en | madrid }}</td>
         <td data-etiqueta="Estado"><span class="estado-invitacion estado-invitacion--{{ estado.value }}">{{ estado.value | capitalize }}</span></td>
         <td data-etiqueta="Usada por">
-          {% if invitacion.usuario %}{{ invitacion.usuario.email }}<br><small class="meta">el {{ invitacion.usada_en | madrid }}</small>
+          {% if invitacion.usuario %}{{ invitacion.usuario.email }}<br><small class="meta">el {{ invitacion.usada_en | madrid }} · {{ tipos.get(invitacion.usuario_id) | tipo_cuenta }}</small>
           {% elif invitacion.usada_en %}Cuenta borrada<br><small class="meta">el {{ invitacion.usada_en | madrid }}</small>
           {% else %}—{% endif %}
         </td>

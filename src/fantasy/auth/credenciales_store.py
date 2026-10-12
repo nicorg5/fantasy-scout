@@ -9,6 +9,7 @@ Nada de aquí devuelve credenciales hacia arriba: solo tokens.
 
 from __future__ import annotations
 
+import enum
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -21,7 +22,7 @@ from fantasy.auth import laliga_login
 from fantasy.auth.passwords import hashear_password
 from fantasy.auth.token_store import escribir_token, leer_token_descifrado
 from fantasy.config import obtener_config
-from fantasy.storage.modelos import CredencialesLaLiga, Usuario
+from fantasy.storage.modelos import CredencialesLaLiga, TipoCredenciales, Usuario
 
 logger = logging.getLogger("fantasy.auth.credenciales_store")
 
@@ -29,6 +30,18 @@ logger = logging.getLogger("fantasy.auth.credenciales_store")
 # constante porque también se LEE: decide el aviso de "tu contraseña ha cambiado"
 # (specs/registro, D10), y un literal repetido podría divergir en silencio.
 ERROR_CREDENCIALES_RECHAZADAS = "LaLiga rechazó las credenciales guardadas"
+# Lo mismo para una cuenta social: LaLiga ya no acepta su refresh token (caducado o
+# revocado) y solo el usuario puede reconectarla (specs/registro-social, D5).
+ERROR_RECONEXION = "LaLiga ya no renueva la conexión: hay que reconectarla"
+
+
+class EstadoConexion(str, enum.Enum):
+    """Lo que hay que decirle al usuario sobre su conexión con LaLiga."""
+
+    SIN_CREDENCIALES = "sin_credenciales"
+    CONECTADA = "conectada"
+    CONTRASENA_CAMBIADA = "contrasena_cambiada"  # cuenta de contraseña rechazada
+    RECONECTAR = "reconectar"  # cuenta social que LaLiga ya no renueva
 
 
 def _fernet() -> Fernet:
@@ -62,20 +75,57 @@ def escribir_credenciales(
         fila = CredencialesLaLiga(user_id=usuario_id)
         sesion.add(fila)
 
+    fila.tipo = TipoCredenciales.PASSWORD.value
     fila.email_cifrado = fernet.encrypt(email.encode())
     fila.password_cifrado = fernet.encrypt(password.encode())
     fila.ultimo_error = None
     return fila
 
 
+def escribir_credenciales_social(
+    sesion: Session, usuario_id: uuid.UUID, email: str, oid: str | None
+) -> CredencialesLaLiga:
+    """Credenciales de una cuenta social, **sin confirmar**: no hay contraseña de LaLiga;
+    se renueva solo con el refresh token, que escribe `escribir_tokens`
+    (specs/registro-social, D1)."""
+    fila = _buscar(sesion, usuario_id)
+    if fila is None:
+        fila = CredencialesLaLiga(user_id=usuario_id)
+        sesion.add(fila)
+    fila.tipo = TipoCredenciales.SOCIAL.value
+    fila.email_cifrado = _fernet().encrypt(email.encode())
+    fila.password_cifrado = None
+    fila.laliga_oid = oid
+    fila.ultimo_error = None
+    return fila
+
+
+def es_social(fila: CredencialesLaLiga | None) -> bool:
+    return fila is not None and fila.tipo == TipoCredenciales.SOCIAL.value
+
+
 def tiene_credenciales(sesion: Session, usuario_id: uuid.UUID) -> bool:
     return _buscar(sesion, usuario_id) is not None
 
 
-def credenciales_rechazadas(sesion: Session, usuario_id: uuid.UUID) -> bool:
-    """Si LaLiga rechazó las credenciales guardadas la última vez que se probaron."""
+def buscar_credenciales(sesion: Session, usuario_id: uuid.UUID) -> CredencialesLaLiga | None:
+    """La fila tal cual, para quien necesita su tipo u `oid`. Nunca se descifra aquí."""
+    return _buscar(sesion, usuario_id)
+
+
+def estado_conexion(sesion: Session, usuario_id: uuid.UUID) -> EstadoConexion:
+    """Qué decirle al usuario: decide el aviso de las páginas y lo que muestra Cuenta.
+
+    Solo los errores que exigen que el usuario actúe cambian el estado; un fallo pasajero
+    del login de LaLiga sigue siendo "conectada"."""
     fila = _buscar(sesion, usuario_id)
-    return fila is not None and fila.ultimo_error == ERROR_CREDENCIALES_RECHAZADAS
+    if fila is None:
+        return EstadoConexion.SIN_CREDENCIALES
+    if fila.ultimo_error == ERROR_CREDENCIALES_RECHAZADAS:
+        return EstadoConexion.CONTRASENA_CAMBIADA
+    if fila.ultimo_error == ERROR_RECONEXION:
+        return EstadoConexion.RECONECTAR
+    return EstadoConexion.CONECTADA
 
 
 def borrar_credenciales(sesion: Session, usuario_id: uuid.UUID) -> bool:
@@ -139,6 +189,8 @@ def obtener_token_valido(sesion: Session, usuario_id: uuid.UUID) -> str | None:
     fila = _buscar(sesion, usuario_id)
     if fila is None:
         return None  # sin credenciales guardadas: solo queda la vía manual
+    if es_social(fila):
+        return _renovar_social(sesion, usuario_id, fila)
 
     # 2. Refresh, si lo tenemos.
     if fila.refresh_token_cifrado:
@@ -173,6 +225,32 @@ def obtener_token_valido(sesion: Session, usuario_id: uuid.UUID) -> str | None:
     return _guardar_tokens(sesion, usuario_id, tokens, fila)
 
 
+def _renovar_social(sesion: Session, usuario_id: uuid.UUID, fila: CredencialesLaLiga) -> str | None:
+    """Cuenta social: **solo** refresh token, nunca ROPC, porque no hay contraseña
+    (specs/registro-social, D5). El refresh rota: `_guardar_tokens` guarda el nuevo."""
+    try:
+        refresh = _fernet().decrypt(fila.refresh_token_cifrado).decode() if fila.refresh_token_cifrado else None
+    except InvalidToken:
+        refresh = None  # cambió TOKEN_ENCRYPTION_KEY: no es recuperable sin reconectar
+    if refresh is None:
+        fila.ultimo_error = ERROR_RECONEXION
+        sesion.commit()
+        return None
+
+    try:
+        tokens = laliga_login.refrescar_social(refresh)
+    except laliga_login.CredencialesInvalidas:
+        fila.ultimo_error = ERROR_RECONEXION
+        sesion.commit()
+        logger.warning("LaLiga ya no renueva una cuenta social: hay que reconectarla")
+        return None
+    except laliga_login.ErrorLoginLaLiga as exc:
+        fila.ultimo_error = f"login no disponible: {exc}"
+        sesion.commit()
+        return None
+    return _guardar_tokens(sesion, usuario_id, tokens, fila)
+
+
 def resincronizar_password(sesion: Session, usuario: Usuario, password: str) -> bool:
     """Cubre "cambié la contraseña en LaLiga" en el login (specs/registro, D6).
 
@@ -187,7 +265,8 @@ def resincronizar_password(sesion: Session, usuario: Usuario, password: str) -> 
     rechazadas: lo más probable es que el usuario se haya equivocado al teclear.
     """
     fila = _buscar(sesion, usuario.id)
-    if fila is None:
+    if fila is None or es_social(fila):
+        # Una cuenta social no tiene contraseña de LaLiga contra la que probar (S13).
         return False
     credenciales = _descifrar(fila)
     if credenciales is None:

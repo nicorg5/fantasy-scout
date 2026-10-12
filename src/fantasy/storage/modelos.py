@@ -191,6 +191,17 @@ class SnapshotMercado(Base):
     jugador: Mapped[Jugador] = relationship()
 
 
+class TipoCredenciales(str, enum.Enum):
+    """Cómo se conecta la cuenta con LaLiga (specs/registro-social, D1).
+
+    Se guarda como texto y no como enum de Postgres: añadir un valor a un enum nativo exige
+    una migración delicada (ver Descubrimientos de specs/observabilidad).
+    """
+
+    PASSWORD = "password"  # email y contraseña de LaLiga: renueva con refresh y, si no, ROPC
+    SOCIAL = "social"  # Google, Apple…: sin contraseña, solo refresh token
+
+
 class CredencialesLaLiga(Base):
     """Credenciales de LaLiga Fantasy del usuario, cifradas.
 
@@ -212,8 +223,16 @@ class CredencialesLaLiga(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("user.id", ondelete="CASCADE"), unique=True, nullable=False
     )
+    tipo: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=TipoCredenciales.PASSWORD.value,
+        server_default=TipoCredenciales.PASSWORD.value,
+    )
     email_cifrado: Mapped[bytes] = mapped_column(nullable=False)
-    password_cifrado: Mapped[bytes] = mapped_column(nullable=False)
+    # NULL en las cuentas sociales: no tienen contraseña de LaLiga.
+    password_cifrado: Mapped[bytes | None] = mapped_column(nullable=True)
+    # Identificador del usuario en LaLiga (claim `oid`). En claro: no es un secreto, y la
+    # reconexión social lo compara para no aceptar otra cuenta (specs/registro-social, S11).
+    laliga_oid: Mapped[str | None] = mapped_column(String(64), nullable=True)
     refresh_token_cifrado: Mapped[bytes | None] = mapped_column(nullable=True)
     ultimo_login_ok: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -253,6 +272,30 @@ class Invitacion(Base):
     revocada_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     usuario: Mapped[Usuario | None] = relationship()
+
+
+class IntentoConexion(Base):
+    """Un intento de conectar una cuenta social, a medio camino (specs/registro-social, D2).
+
+    Existe entre que fantasy-scout genera el enlace al login de LaLiga y que el usuario pega
+    la dirección de vuelta. Se busca por `state`, que viaja en esa dirección: así funciona
+    aunque pegue en otro navegador. El verificador PKCE va cifrado: durante 15 minutos es
+    media credencial. Se borra al usarse.
+    """
+
+    __tablename__ = "intento_conexion"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    state: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    verificador_cifrado: Mapped[bytes] = mapped_column(nullable=False)
+    # Uno de los dos: invitación (alta) o usuario (reconexión).
+    invitacion_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("invitacion.id", ondelete="CASCADE"), nullable=True
+    )
+    usuario_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id", ondelete="CASCADE"), nullable=True
+    )
+    caduca_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class AnaliticaDiaria(Base):

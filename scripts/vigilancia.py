@@ -3,6 +3,8 @@
 
 Imprime un informe y sale con código 1 si alguna comprobación falla: el workflow queda en
 rojo y GitHub manda el email. Solo LEE de la base de datos; no necesita la clave de cifrado.
+Además hace UNA petición GET, sin credenciales, al login de LaLiga para comprobar que sigue
+aceptando la vuelta de las altas con Google (specs/registro-social, S17).
 
 Uso:
     uv run python scripts/vigilancia.py
@@ -18,7 +20,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from fantasy.observabilidad.vigilancia import Umbrales, evaluar
+from fantasy.auth.laliga_login import sondear_vuelta_social
+from fantasy.observabilidad.vigilancia import Umbrales, comprobar_vuelta_social, evaluar
 from fantasy.storage.engine import obtener_fabrica_sesiones
 from fantasy.storage.fechas import ahora_en_madrid
 
@@ -43,6 +46,8 @@ def main(argv: list[str] | None = None) -> int:
 
     with obtener_fabrica_sesiones()() as sesion:
         comprobaciones = evaluar(sesion, ahora=ahora, umbrales=umbrales)
+    # Fuera de evaluar(): depende de un tercero, y el panel /uso no debe llamarle (D10).
+    comprobaciones.append(comprobar_vuelta_social(sondear_vuelta_social()))
 
     print(f"Vigilancia de fantasy-scout — {ahora:%Y-%m-%d %H:%M %Z}\n")
     for c in comprobaciones:

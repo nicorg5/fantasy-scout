@@ -13,7 +13,26 @@
 {% endif %}
 
 <article>
-  {% if tiene_credenciales and not rechazadas %}
+  {% if social %}
+  {# Cuenta de Google u otra red social (specs/registro-social, S10): sin contraseña de LaLiga. #}
+  {% if reconectar %}
+  <p role="alert" class="pico-color-red-500">Tu conexión con LaLiga ha caducado. Vuelve a
+  conectarla con la misma cuenta de siempre para ver tus datos.</p>
+  {% elif not mostrar_pasos %}
+  <p>Tu cuenta de LaLiga está conectada con Google u otra red social: tus datos se actualizan
+  solos, no tienes que hacer nada.</p>
+  {% endif %}
+  {% if reconectar or mostrar_pasos %}
+  {% with accion_iniciar="/token/social/iniciar", accion_enviar="/token/social",
+          campos_ocultos={}, con_contrasena=False %}
+  {% include "_pasos_social.html" %}
+  {% endwith %}
+  {% else %}
+  <form method="post" action="/token/social/iniciar" class="en-linea">
+    <button type="submit" class="secondary">Volver a conectar</button>
+  </form>
+  {% endif %}
+  {% elif tiene_credenciales and not rechazadas %}
   <p>Tu cuenta de LaLiga está conectada: tus datos se actualizan solos, no tienes que hacer nada.</p>
   <form method="post" action="/credenciales/borrar">
     <button type="submit" class="secondary">Desconectar mi cuenta</button>

@@ -15,6 +15,7 @@ from unittest.mock import patch
 
 import pytest
 
+from fantasy.auth.laliga_login import ResultadoSondeo, SondeoVuelta
 from fantasy.observabilidad.consultas import CoberturaDia, EstadoToken
 from fantasy.observabilidad.vigilancia import (
     Comprobacion,
@@ -23,6 +24,7 @@ from fantasy.observabilidad.vigilancia import (
     comprobar_cron,
     comprobar_logins,
     comprobar_snapshot,
+    comprobar_vuelta_social,
 )
 from fantasy.storage.modelos import EjecucionCron
 
@@ -147,6 +149,15 @@ script = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(script)
 
 
+@pytest.fixture(autouse=True)
+def _sin_llamar_a_laliga(monkeypatch):
+    """main() sondea el login de LaLiga (S17). En los tests, nunca de verdad."""
+    monkeypatch.setattr(
+        script, "sondear_vuelta_social",
+        lambda: SondeoVuelta(ResultadoSondeo.ACEPTADA, "acepta (simulado)"),
+    )
+
+
 def test_el_script_sale_en_rojo_si_algo_falla(capsys):
     """Código ≠ 0 es lo que pone el workflow en rojo y hace que GitHub mande el email."""
     comprobaciones = [Comprobacion("cron", True, "bien"), Comprobacion("cobertura", False, "70% frente a 95%")]
@@ -171,3 +182,41 @@ def test_los_umbrales_de_la_linea_de_comandos_llegan_a_la_evaluacion():
 
     umbrales = evaluar.call_args.kwargs["umbrales"]
     assert (umbrales.caida_cobertura_puntos, umbrales.horas_sin_snapshot) == (-1, 1)
+
+
+# --- specs/registro-social, S17: LaLiga sigue aceptando jwt.ms -----------------------------
+
+
+@pytest.mark.parametrize(
+    ("resultado", "ok"),
+    [(ResultadoSondeo.ACEPTADA, True), (ResultadoSondeo.RECHAZADA, False), (ResultadoSondeo.NO_COMPROBADA, True)],
+)
+def test_comprobar_vuelta_social(resultado, ok):
+    """Rechazada es alarma; no comprobada se dice pero no alarma."""
+    comprobacion = comprobar_vuelta_social(SondeoVuelta(resultado, "detalle"))
+    assert comprobacion.ok is ok
+    if resultado is ResultadoSondeo.NO_COMPROBADA:
+        assert "no se pudo comprobar" in comprobacion.detalle
+
+
+@pytest.mark.parametrize(
+    ("resultado", "codigo"),
+    [(ResultadoSondeo.RECHAZADA, 1), (ResultadoSondeo.NO_COMPROBADA, 0), (ResultadoSondeo.ACEPTADA, 0)],
+)
+def test_el_script_incluye_la_vuelta_social(monkeypatch, capsys, resultado, codigo):
+    monkeypatch.setattr(script, "sondear_vuelta_social", lambda: SondeoVuelta(resultado, "detalle"))
+    with patch.object(script, "evaluar", return_value=[Comprobacion("cron", True, "bien")]):
+        assert script.main([]) == codigo
+    assert "login con Google/Apple/Facebook" in capsys.readouterr().out
+
+
+def test_el_panel_de_uso_no_llama_a_laliga(cliente_autenticado, usuario_de_prueba, admin_es):
+    """D10: /uso no sondea; solo dice que se comprueba por la mañana."""
+    import fantasy.auth.laliga_login as laliga_login
+
+    usuario, _ = usuario_de_prueba
+    admin_es(usuario.email)
+    # Solo se parchea el sondeo: el TestClient también es un httpx.Client.
+    with patch.object(laliga_login, "_sondear_una_vez", side_effect=AssertionError("no debe llamarse")):
+        html = cliente_autenticado.get("/uso").text
+    assert "se comprueba en el email de la mañana" in html

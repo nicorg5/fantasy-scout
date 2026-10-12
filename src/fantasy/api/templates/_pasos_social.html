@@ -1,0 +1,59 @@
+{# Los tres pasos de la vía social, comunes al alta y a la reconexión (specs/registro-social, D7).
+   Variables: url_login (o None), accion_iniciar, accion_enviar, campos_ocultos (dict),
+   con_contrasena, es_movil, navegador_integrado.
+   Lo pegado nunca se devuelve en la página: lleva el código de LaLiga (S7). #}
+{% set accion = "Toca" if es_movil else "Haz clic en" %}
+{% if navegador_integrado %}
+<p role="alert" class="aviso-navegador">Estás dentro de otra app (WhatsApp, Instagram…) y
+Google no deja iniciar sesión desde aquí. Abre esta página en tu navegador: Safari, Chrome o
+Edge.</p>
+{% endif %}
+<ol class="pasos-social">
+  <li>
+    <strong>Entra en LaLiga.</strong>
+    {% if url_login %}
+    {# noreferrer: la URL de esta página puede llevar la invitación y no debe llegar a LaLiga. #}
+    <p>Se abrirá en otra pestaña. Elige <strong>Google</strong> (o la red social que uses en
+    LaLiga Fantasy) y entra como siempre.</p>
+    <a href="{{ url_login }}" target="_blank" rel="noopener noreferrer" role="button">Abrir el login de LaLiga</a>
+    {% else %}
+    <form method="post" action="{{ accion_iniciar }}" class="en-linea">
+      {% for nombre, valor in campos_ocultos.items() %}<input type="hidden" name="{{ nombre }}" value="{{ valor }}">{% endfor %}
+      <button type="submit">Abrir el login de LaLiga</button>
+    </form>
+    {% endif %}
+  </li>
+  <li>
+    <strong>Copia la dirección.</strong>
+    <p>Al terminar acabarás en una página de Microsoft casi vacía (<code>jwt.ms</code>). Es
+    lo normal. {{ accion }} la barra de direcciones, copia la dirección completa (empieza por
+    <code>https://jwt.ms/</code>) y vuelve a esta pestaña.</p>
+  </li>
+  <li>
+    <strong>Pégala aquí{% if con_contrasena %} y elige tu contraseña de fantasy-scout{% endif %}.</strong>
+    <form method="post" action="{{ accion_enviar }}">
+      {% for nombre, valor in campos_ocultos.items() %}<input type="hidden" name="{{ nombre }}" value="{{ valor }}">{% endfor %}
+
+      <label for="pegado">Dirección de la página de Microsoft</label>
+      <textarea id="pegado" name="pegado" rows="3" required autocomplete="off"
+                placeholder="https://jwt.ms/#state=…&code=…"></textarea>
+      {# Sin fichero .js. Si el navegador no deja leer el portapapeles, se dice y se pega a mano. #}
+      <button type="button" class="secondary"
+              onclick="(navigator.clipboard ? navigator.clipboard.readText() : Promise.reject()).then(t => { document.getElementById('pegado').value = t }).catch(() => { document.getElementById('aviso-pegar').hidden = false })">Pegar</button>
+      <small id="aviso-pegar" hidden>No hemos podido leer el portapapeles. Mantén pulsado el
+      campo y elige Pegar (en ordenador, Ctrl+V o Cmd+V).</small>
+
+      {% if con_contrasena %}
+      <p>Tu cuenta usará el email de tu cuenta de LaLiga. Para entrar después en fantasy-scout
+      necesitas una contraseña propia, que no es la de Google:</p>
+      <label for="password">Contraseña para fantasy-scout</label>
+      <input type="password" id="password" name="password" required minlength="8" autocomplete="new-password">
+      <label for="password2">Repite la contraseña</label>
+      <input type="password" id="password2" name="password2" required minlength="8" autocomplete="new-password">
+      <button type="submit">Crear mi cuenta</button>
+      {% else %}
+      <button type="submit">Volver a conectar</button>
+      {% endif %}
+    </form>
+  </li>
+</ol>

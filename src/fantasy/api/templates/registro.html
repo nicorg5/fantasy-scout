@@ -1,11 +1,32 @@
 {% extends "base.html" %}
-{# Alta por invitación (specs/registro, bloque B). Sin invitación válida no hay formulario. #}
+{# Alta por invitación (specs/registro, bloque B; specs/registro-social, S1-S2, S18).
+   Sin invitación válida no hay formulario. Dos vías: contraseña de LaLiga o red social. #}
 {% block contenido %}
 <h1>Crear tu cuenta</h1>
 
 {% if not valida %}
 <p role="alert" class="pico-color-red-500">{{ mensaje_no_valida }}</p>
+
+{% elif via == "social" %}
+{# --- Vía social: tres pasos. Lo pegado nunca se devuelve en la página (S7). --- #}
+{% if error %}
+<p role="alert" class="pico-color-red-500">{{ error }}</p>
+{% endif %}
+{% if ya_tiene_cuenta %}
+<p role="alert" class="pico-color-red-500">Ya tienes una cuenta con el email de tu cuenta de
+LaLiga. <a href="/login">Entra aquí</a>.</p>
+{% endif %}
+
+{% with accion_iniciar="/registro/social/iniciar", accion_enviar="/registro/social",
+        campos_ocultos={"invitacion": invitacion}, con_contrasena=True %}
+{% include "_pasos_social.html" %}
+{% endwith %}
+
+<p><small><strong>Qué se guarda:</strong> una conexión con tu cuenta de LaLiga, cifrada en el
+servidor, para mantener tus datos al día. Nunca vemos tu contraseña de Google.</small></p>
+
 {% else %}
+{# --- Vía contraseña de LaLiga (specs/registro). --- #}
 <p>Entra con el <strong>mismo email y contraseña que usas en LaLiga Fantasy</strong>. Con eso
 la app conecta tu equipo y lo mantiene al día sola: no tienes que hacer nada más.</p>
 
@@ -32,5 +53,14 @@ la app conecta tu equipo y lo mantiene al día sola: no tienes que hacer nada m�
 <p><small><strong>Qué se guarda:</strong> tu email y tu contraseña de LaLiga, cifrados en el
 servidor. Hacen falta para renovar cada día tu conexión con LaLiga, así que no se pueden
 guardar "en un solo sentido" como una contraseña normal. Nunca se muestran ni se comparten.</small></p>
+
+<article class="otra-via">
+  <p><strong>¿Entras en LaLiga con Google, Apple u otra red social?</strong> Entonces no
+  tienes contraseña de LaLiga: usa esta opción.</p>
+  <form method="post" action="/registro/social/iniciar" class="en-linea">
+    <input type="hidden" name="invitacion" value="{{ invitacion }}">
+    <button type="submit" class="secondary">Entro en LaLiga con Google u otra red social</button>
+  </form>
+</article>
 {% endif %}
 {% endblock %}

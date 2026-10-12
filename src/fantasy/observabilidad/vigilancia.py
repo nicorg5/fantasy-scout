@@ -25,6 +25,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
+from fantasy.auth.laliga_login import ResultadoSondeo, SondeoVuelta
 from fantasy.observabilidad import consultas
 from fantasy.storage.fechas import fecha_local
 from fantasy.storage.modelos import EjecucionCron
@@ -131,6 +132,28 @@ def comprobar_logins(estados: Sequence[consultas.EstadoToken]) -> Comprobacion:
     # O20: id, nunca email. El admin lo cruza en /uso si necesita saber quién es.
     lista = "; ".join(f"usuario {e.user_id}: {e.ultimo_error}" for e in fallidos)
     return Comprobacion("login", False, f"{len(fallidos)} con login fallido — {lista}")
+
+
+# Nombre visible en el email y en /uso: lo que se rompería, no el mecanismo (jwt.ms).
+NOMBRE_LOGIN_SOCIAL = "login con Google/Apple/Facebook"
+
+
+def comprobar_vuelta_social(sondeo: SondeoVuelta) -> Comprobacion:
+    """Condición 5 (specs/registro-social, S17): LaLiga sigue aceptando `https://jwt.ms`,
+    sin lo que no hay altas ni reconexiones con Google.
+
+    No se pudo comprobar → OK con el motivo: datos insuficientes no es alarma. Solo la
+    llama `scripts/vigilancia.py`, no `evaluar()`: el panel /uso no debe llamar a LaLiga
+    cada vez que se abre (design.md D10).
+    """
+    if sondeo.resultado is ResultadoSondeo.RECHAZADA:
+        return Comprobacion(
+            NOMBRE_LOGIN_SOCIAL, False,
+            f"{sondeo.detalle}: las altas y reconexiones con Google dejan de funcionar",
+        )
+    if sondeo.resultado is ResultadoSondeo.NO_COMPROBADA:
+        return Comprobacion(NOMBRE_LOGIN_SOCIAL, True, f"no se pudo comprobar hoy: {sondeo.detalle}")
+    return Comprobacion(NOMBRE_LOGIN_SOCIAL, True, sondeo.detalle)
 
 
 def evaluar(

@@ -21,6 +21,12 @@
       <span>{{ c.detalle }}</span>
     </li>
     {% endfor %}
+    {# Depende de un tercero: solo la vigilancia de la mañana llama a LaLiga, el panel no
+       (specs/registro-social, D10). #}
+    <li class="comprobacion comprobacion--ok">
+      <strong>login con Google/Apple/Facebook</strong>
+      <span>Que LaLiga siga aceptando las altas y reconexiones con redes sociales se comprueba en el email de la mañana.</span>
+    </li>
   </ul>
 </section>
 
@@ -87,12 +93,13 @@
 <section aria-labelledby="t-personas">
   <h2 id="t-personas">Por persona</h2>
   <table class="jugadores tabla-uso">
-    <thead><tr><th>Cuenta</th><th>Alta</th><th>Última visita</th><th>Sesiones</th><th>Sección favorita</th></tr></thead>
+    <thead><tr><th>Cuenta</th><th>Alta</th><th>Conexión</th><th>Última visita</th><th>Sesiones</th><th>Sección favorita</th></tr></thead>
     <tbody>
       {% for u in usuarios %}
       <tr>
         <td class="celda-principal" data-etiqueta="Cuenta">{{ u.email }}</td>
         <td data-etiqueta="Alta">{{ u.alta | madrid }}</td>
+        <td data-etiqueta="Conexión">{{ u.tipo_cuenta | tipo_cuenta }}</td>
         <td data-etiqueta="Última visita"><span title="{{ u.ultima_visita | madrid }}">{{ u.ultima_visita | hace }}</span></td>
         <td data-etiqueta="Sesiones">{{ u.sesiones }}</td>
         <td data-etiqueta="Sección favorita">{{ u.seccion_favorita | nombre_ruta }}</td>

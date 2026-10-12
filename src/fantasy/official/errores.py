@@ -29,6 +29,12 @@ class CredencialesRechazadas(TokenInvalido):
     """
 
 
+class ConexionCaducada(TokenInvalido):
+    """No hay token y LaLiga ya no renueva la conexión de una cuenta social: hay que
+    reconectarla desde Cuenta (specs/registro-social, D5). Subclase de `TokenInvalido` por
+    lo mismo que `CredencialesRechazadas`."""
+
+
 class RespuestaInesperada(ErrorAPIOficial):
     """La respuesta no tiene la forma que esperábamos: la API cambió, o cambió el contrato.
 

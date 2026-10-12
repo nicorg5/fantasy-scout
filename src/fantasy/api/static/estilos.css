@@ -556,3 +556,11 @@ main h1 + p { color: var(--ll-texto-tenue); font-size: .95rem; }
 .estado-invitacion--revocada  { color: var(--ll-texto-tenue); }
 form.en-linea { margin: 0; }
 form.en-linea button { width: auto; margin: 0; padding: .25rem .75rem; font-size: .85rem; }
+
+/* --- Alta con red social (specs/registro-social) --- */
+.pasos-social { padding-left: 1.25rem; }
+.pasos-social > li { margin-bottom: 1.5rem; }
+.pasos-social textarea { font-family: ui-monospace, monospace; font-size: .8rem; }
+.aviso-navegador { border-left: 3px solid var(--ll-aviso); padding-left: .75rem; color: var(--ll-aviso); }
+.otra-via { margin-top: 2rem; border-left: 3px solid var(--ll-info); }
+.otra-via button { width: auto; }

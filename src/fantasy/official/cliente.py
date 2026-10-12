@@ -12,8 +12,13 @@ import uuid
 import httpx
 from sqlalchemy.orm import Session
 
-from fantasy.auth.credenciales_store import credenciales_rechazadas, obtener_token_valido
-from fantasy.official.errores import CredencialesRechazadas, RespuestaInesperada, TokenInvalido
+from fantasy.auth.credenciales_store import EstadoConexion, estado_conexion, obtener_token_valido
+from fantasy.official.errores import (
+    ConexionCaducada,
+    CredencialesRechazadas,
+    RespuestaInesperada,
+    TokenInvalido,
+)
 from fantasy.official.modelos import (
     JugadorConClausula,
     Plantilla,
@@ -38,8 +43,11 @@ class ClienteOficial:
         if token is None:
             # Ni token válido ni forma de obtenerlo. Si es porque LaLiga rechaza la
             # contraseña guardada, el usuario tiene que saberlo: la cambió allí.
-            if credenciales_rechazadas(self._sesion, self._usuario_id):
+            estado = estado_conexion(self._sesion, self._usuario_id)
+            if estado is EstadoConexion.CONTRASENA_CAMBIADA:
                 raise CredencialesRechazadas("LaLiga rechaza las credenciales guardadas.")
+            if estado is EstadoConexion.RECONECTAR:
+                raise ConexionCaducada("LaLiga ya no renueva la conexión social.")
             raise TokenInvalido(
                 "No hay un token válido y no se ha podido renovar automáticamente."
             )

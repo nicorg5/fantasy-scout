@@ -88,11 +88,20 @@ def _madrid(momento: datetime | None) -> str:
     return momento.astimezone(MADRID).strftime("%d/%m %H:%M") if momento else "—"
 
 
+# Cómo se conecta cada cuenta con LaLiga, en palabras (specs/registro-social, S14).
+NOMBRES_TIPO_CUENTA = {"password": "Contraseña de LaLiga", "social": "Red social"}
+
+
+def _tipo_cuenta(tipo: str | None) -> str:
+    return NOMBRES_TIPO_CUENTA.get(tipo, "Sin conexión automática") if tipo else "Sin conexión automática"
+
+
 def montar_templates(templates: Jinja2Templates) -> None:
     global _templates
     _templates = templates
     templates.env.filters.update(
-        nombre_ruta=_nombre_ruta, duracion=_duracion, hace=_hace, madrid=_madrid
+        nombre_ruta=_nombre_ruta, duracion=_duracion, hace=_hace, madrid=_madrid,
+        tipo_cuenta=_tipo_cuenta,
     )
     templates.env.globals["es_admin"] = es_admin
 
