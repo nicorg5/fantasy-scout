@@ -86,6 +86,30 @@ def test_caso_peligroso_real_alfon(mapa_equipos_falso):
     assert emparejados[0].candidato.nombre == "alfonso gonzalez"
 
 
+def test_caso_real_isco_apodo_mas_apellido(mapa_equipos_falso):
+    """Caso real (2026-10-14): futbolfantasy lo llama 'isco alarcon'. Ni 'isco' (0,50) ni
+    el nombre completo (0,57) llegaban al umbral, y su subida de valor no se veía."""
+    isco = OficialFalso("3090", "Francisco Román Alarcón Suárez", "Isco", "isco", 12)
+    candidatos = [CandidatoExterno("336", "isco alarcon", "11")]
+
+    emparejados, sin = emparejar([isco], candidatos)
+
+    assert [e.candidato.id_externo for e in emparejados] == ["336"]
+    assert sin == []
+
+
+def test_apodo_mas_apellido_no_vale_por_parecido(mapa_equipos_falso):
+    """Caso real: comparada por similitud, 'gavi martin' casaba con 'gerard martin' (0,75).
+    La variante apodo + apellido solo puede coincidir exacta."""
+    gavi = OficialFalso("5", "Pablo Martín Páez Gavira", "Gavi", "gavi", 12)
+    candidatos = [CandidatoExterno("13500", "gerard martin", "11")]
+
+    emparejados, sin = emparejar([gavi], candidatos)
+
+    assert emparejados == []
+    assert len(sin) == 1
+
+
 def test_dos_candidatos_casi_iguales_no_se_adivinan(mapa_equipos_falso):
     """Salvaguarda de ambigüedad: ante dos casi idénticos del mismo equipo, sin match."""
     oficial = OficialFalso("4", "Juan Perez", "Perez", "juan-perez", 12)

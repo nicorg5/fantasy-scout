@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 
 from fantasy.matching.equipos import equipo_futbolfantasy
-from fantasy.matching.normalizacion import normalizar, variantes_oficiales
+from fantasy.matching.normalizacion import normalizar, variantes_apodo_apellido, variantes_oficiales
 
 logger = logging.getLogger("fantasy.matching.emparejador")
 
@@ -59,16 +59,17 @@ class SinEmparejar:
 
 
 def _mejor_candidato(
-    variantes: set[str], candidatos: list[CandidatoExterno]
+    variantes: set[str], candidatos: list[CandidatoExterno], exactas: set[str] = frozenset()
 ) -> tuple[CandidatoExterno | None, float, float]:
     """Devuelve (mejor, similitud_mejor, similitud_segundo).
 
+    `exactas` solo puntúan si coinciden tal cual; no entran en la comparación por parecido.
     La similitud del segundo es lo que permite detectar ambigüedad más arriba.
     """
     puntuados: list[tuple[float, CandidatoExterno]] = []
     for candidato in candidatos:
         normalizado = normalizar(candidato.nombre)
-        if normalizado in variantes:
+        if normalizado in variantes or normalizado in exactas:
             similitud = 1.0
         else:
             similitud = max(
@@ -141,7 +142,8 @@ def emparejar(
 
         # 3. Comparar nombres dentro del equipo.
         variantes = variantes_oficiales(oficial.nombre, oficial.apodo, oficial.slug)
-        mejor, similitud, segunda = _mejor_candidato(variantes, del_equipo)
+        exactas = variantes_apodo_apellido(oficial.nombre, oficial.apodo)
+        mejor, similitud, segunda = _mejor_candidato(variantes, del_equipo, exactas)
 
         if mejor is None or similitud < umbral:
             sin_emparejar.append(

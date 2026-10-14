@@ -36,3 +36,19 @@ def variantes_oficiales(nombre: str, apodo: str, slug: str) -> set[str]:
         normalizar(apodo),
         normalizar(slug.replace("-", " ")),
     }
+
+
+def variantes_apodo_apellido(nombre: str, apodo: str) -> set[str]:
+    """`apodo + una palabra del nombre`, que es como futbolfantasy nombra a algunos jugadores
+    conocidos por apodo: `Isco` (Francisco Román Alarcón Suárez) es `isco alarcon`.
+
+    **Solo valen por coincidencia exacta**, nunca por parecido: comparadas por similitud
+    emparejaban a `Gavi` (`gavi martin`) con `gerard martin` en los datos reales.
+    """
+    apodo_normalizado = normalizar(apodo)
+    palabras_apodo = apodo_normalizado.split()
+    return {
+        f"{apodo_normalizado} {palabra}"
+        for palabra in normalizar(nombre).split()
+        if palabra not in palabras_apodo
+    }
