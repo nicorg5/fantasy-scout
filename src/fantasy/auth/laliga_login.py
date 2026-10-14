@@ -1,12 +1,14 @@
 """Login programático contra LaLiga Fantasy (Azure B2C).
 
-Dos flujos:
+Los dos flujos acaban en el mismo código de autorización + PKCE con vuelta a `https://jwt.ms`,
+la única dirección de vuelta registrada que deja el código visible en un iPhone:
 
-- **ROPC** (email y contraseña): descubierto en el bundle de `Externoak/LaLigaApp` v3.5.3 y
-  verificado contra el endpoint real (ver design.md §Login automático).
-- **Social** (Google, Apple…): código de autorización + PKCE con vuelta a `https://jwt.ms`,
-  la única dirección de vuelta registrada que deja el código visible en un iPhone. Verificado
-  con una cuenta real de Google (specs/registro-social, design.md D3).
+- **Email y contraseña**: se recorre sin navegador la página de login de B2C (authorize →
+  SelfAsserted → confirmed), rellenando el formulario de cuenta local. Sustituye a ROPC
+  (`B2C_1A_ResourceOwnerv2`), que LaLiga retiró el 13/10/2026: su endpoint responde 404.
+  Verificado con una cuenta real el 14/10/2026.
+- **Social** (Google, Apple…): el usuario hace el login en su navegador y pega la dirección
+  de vuelta. Verificado con una cuenta real de Google (specs/registro-social, design.md D3).
 
 **Aquí se manejan credenciales en claro en memoria.** Nada de lo que pasa por este módulo
 puede acabar en un log, en una excepción con detalle, ni en una respuesta HTTP.
@@ -19,6 +21,8 @@ import enum
 import hashlib
 import json
 import logging
+import re
+import secrets
 import time
 import urllib.parse
 from dataclasses import dataclass
@@ -28,14 +32,13 @@ import httpx
 
 logger = logging.getLogger("fantasy.auth.laliga_login")
 
-BASE_URL = "https://login.laliga.es/laligadspprob2c.onmicrosoft.com/oauth2/v2.0/token"
-POLICY_LOGIN = "B2C_1A_ResourceOwnerv2"
+HOST_LOGIN = "https://login.laliga.es"
+BASE_URL = f"{HOST_LOGIN}/laligadspprob2c.onmicrosoft.com/oauth2/v2.0/token"
 POLICY_REFRESH = "B2C_1A_5ULAIP_PARAMETRIZED_SIGNIN"
 CLIENT_ID = "af88bcff-1157-40a0-b579-030728aacf0b"
-REDIRECT_URI = "authredirect://com.lfp.laligafantasy"
 TIMEOUT_SEGUNDOS = 20.0
 
-# Flujo social (specs/registro-social, D3). Misma política que la renovación.
+# Flujo de código (specs/registro-social, D3). Misma política que la renovación.
 AUTHORIZE_URL = BASE_URL.removesuffix("/token") + "/authorize"
 POLICY_SOCIAL = POLICY_REFRESH
 REDIRECT_SOCIAL = "https://jwt.ms"
@@ -43,6 +46,14 @@ REDIRECT_SOCIAL = "https://jwt.ms"
 SCOPE_SOCIAL = "openid offline_access"
 # B2C responde con este código cuando la dirección de vuelta no está registrada.
 ERROR_VUELTA_NO_REGISTRADA = "AADB2C90006"
+
+# Formulario de cuenta local de la página de login (`SA_FIELDS` de la página).
+CAMPO_EMAIL = "signInName"
+CAMPO_PASSWORD = "password_login"
+# Códigos de B2C que significan "email o contraseña mal". Cualquier otro rechazo del
+# formulario es un fallo nuestro o de LaLiga, no del usuario: no se le culpa.
+ERRORES_CREDENCIALES = {"AADB2C90053", "AADB2C90054"}
+UA_NAVEGADOR = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148"
 
 # Vigencia de respaldo si la respuesta no dice cuánto dura (el JWT real dura 24 h).
 VIGENCIA_RESPALDO = timedelta(hours=24)
@@ -126,32 +137,18 @@ def _pedir(url: str, datos: dict[str, str]) -> dict:
         raise LoginNoDisponible("el login de LaLiga no devolvió JSON") from exc
 
 
-def iniciar_sesion(email: str, password: str) -> TokensLaLiga:
-    """Obtiene tokens con email y contraseña. Las credenciales solo viven en memoria."""
-    payload = _pedir(
-        f"{BASE_URL}?p={POLICY_LOGIN}",
-        {
-            "grant_type": "password",
-            "client_id": CLIENT_ID,
-            "scope": f"openid {CLIENT_ID} offline_access",
-            "redirect_uri": REDIRECT_URI,
-            "username": email,
-            "password": password,
-            "response_type": "id_token",
-        },
-    )
-    logger.info("login contra LaLiga correcto")  # sin email: es un dato personal
-    return _tokens_desde(payload)
-
-
 def refrescar(refresh_token: str) -> TokensLaLiga:
-    """Renueva sin credenciales. Se intenta antes que un login completo."""
+    """Renueva sin credenciales. Se intenta antes que un login completo.
+
+    Con el scope del flujo de código, que es con el que `iniciar_sesion` emite ahora los
+    tokens. Un refresh token antiguo de ROPC que LaLiga ya no acepte cae al login completo.
+    """
     payload = _pedir(
         f"{BASE_URL}?p={POLICY_REFRESH}",
         {
             "grant_type": "refresh_token",
             "client_id": CLIENT_ID,
-            "scope": f"openid {CLIENT_ID} offline_access",
+            "scope": SCOPE_SOCIAL,
             "refresh_token": refresh_token,
         },
     )
@@ -252,23 +249,93 @@ def canjear_codigo(code: str, verificador: str) -> TokensSocial:
     claims = _claims(payload.get("id_token") or "")
     emails = claims.get("emails") or []
     email = claims.get("email") or (emails[0] if emails else None)
-    logger.info("canje de código social correcto (idp %s)", claims.get("idp", "?"))
+    logger.info("canje de código correcto (idp %s)", claims.get("idp", "?"))
     return TokensSocial(tokens=tokens, email=email, oid=claims.get("oid") or claims.get("sub"))
 
 
 def refrescar_social(refresh_token: str) -> TokensLaLiga:
-    """Como `refrescar`, con el scope con el que se emitió el token social."""
-    payload = _pedir(
-        f"{BASE_URL}?p={POLICY_SOCIAL}",
-        {
-            "grant_type": "refresh_token",
-            "client_id": CLIENT_ID,
-            "scope": SCOPE_SOCIAL,
-            "refresh_token": refresh_token,
-        },
-    )
-    logger.info("refresh de token social correcto")
-    return _tokens_desde(payload)
+    """Igual que `refrescar`: ambos flujos emiten ya los tokens con el mismo scope. Se
+    mantiene aparte porque una cuenta social **solo** se renueva por aquí (D5)."""
+    return refrescar(refresh_token)
+
+
+# --------------------------------------------------------------------------------------
+# Email y contraseña: la página de login de B2C recorrida sin navegador
+
+
+def _ajuste_de_pagina(html: str, clave: str) -> str | None:
+    """Valor de texto de `var SETTINGS = {...}` en la página de login de B2C."""
+    m = re.search(r'"%s"\s*:\s*"([^"]*)"' % re.escape(clave), html)
+    return m.group(1) if m else None
+
+
+def iniciar_sesion(email: str, password: str) -> TokensLaLiga:
+    """Obtiene tokens con email y contraseña. Las credenciales solo viven en memoria.
+
+    Lanza `CredencialesInvalidas` si LaLiga rechaza email o contraseña, y
+    `LoginNoDisponible` ante cualquier otra cosa (red, página cambiada, pantalla nueva).
+    Ningún mensaje lleva el cuerpo de una respuesta: podría arrastrar las credenciales.
+    """
+    state = secrets.token_urlsafe(16)
+    verificador = secrets.token_urlsafe(48)
+    try:
+        with httpx.Client(timeout=TIMEOUT_SEGUNDOS, follow_redirects=False,
+                          headers={"User-Agent": UA_NAVEGADOR}) as cliente:
+            # 1. Página de login: abre la transacción (cookies) y trae su CSRF.
+            pagina = cliente.get(url_login_social(state, verificador))
+            if pagina.status_code != 200:
+                raise LoginNoDisponible(f"la página de login de LaLiga respondió HTTP {pagina.status_code}")
+            csrf, tx, api, tenant = (
+                _ajuste_de_pagina(pagina.text, k) for k in ("csrf", "transId", "api", "tenant")
+            )
+            if not (csrf and tx and api and tenant):
+                raise LoginNoDisponible("la página de login de LaLiga ha cambiado: falta la transacción")
+            politica = tenant.rsplit("/", 1)[-1]
+
+            # 2. El formulario de cuenta local.
+            envio = cliente.post(
+                f"{HOST_LOGIN}{tenant}/SelfAsserted",
+                params={"tx": tx, "p": politica},
+                data={"request_type": "RESPONSE", CAMPO_EMAIL: email, CAMPO_PASSWORD: password},
+                headers={"X-CSRF-TOKEN": csrf, "X-Requested-With": "XMLHttpRequest",
+                         "Origin": HOST_LOGIN, "Referer": str(pagina.url)},
+            )
+            try:
+                resultado = envio.json()
+            except ValueError:
+                raise LoginNoDisponible(f"el login de LaLiga respondió HTTP {envio.status_code} sin JSON") from None
+            if resultado.get("status") != "200":
+                codigo = resultado.get("errorCode", "?")
+                if codigo in ERRORES_CREDENCIALES:
+                    raise CredencialesInvalidas("LaLiga rechazó el email o la contraseña.")
+                raise LoginNoDisponible(f"el login de LaLiga rechazó el formulario ({codigo})")
+
+            # 3. Confirmación: B2C redirige a la vuelta con el código.
+            confirmacion = cliente.get(
+                f"{HOST_LOGIN}{tenant}/api/{api}/confirmed",
+                params={"rememberMe": "false", "csrf_token": csrf, "tx": tx, "p": politica},
+            )
+            destino = confirmacion.headers.get("location", "")
+    except httpx.HTTPError as exc:
+        raise LoginNoDisponible(f"no se pudo contactar con el login de LaLiga: {type(exc).__name__}") from None
+
+    if not destino.startswith(REDIRECT_SOCIAL):
+        # p. ej. LaLiga añade una pantalla (condiciones, verificación) tras la contraseña.
+        raise LoginNoDisponible(f"el login de LaLiga no devolvió el código (HTTP {confirmacion.status_code})")
+    try:
+        estado, code = extraer_codigo(destino)
+    except (DireccionSinCodigo, ErrorEnLaDireccion):
+        raise LoginNoDisponible("el login de LaLiga devolvió un error en lugar del código") from None
+    if estado != state:
+        raise LoginNoDisponible("el login de LaLiga devolvió un código de otra transacción")
+
+    # 4. Canje. Un 400 aquí es el código, no la contraseña: no se culpa al usuario.
+    try:
+        tokens = canjear_codigo(code, verificador).tokens
+    except CredencialesInvalidas:
+        raise LoginNoDisponible("LaLiga rechazó el canje del código") from None
+    logger.info("login contra LaLiga correcto")  # sin email: es un dato personal
+    return tokens
 
 
 class ResultadoSondeo(str, enum.Enum):
