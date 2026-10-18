@@ -280,3 +280,31 @@ def test_las_clausulas_llevan_el_rival_de_cada_jugador():
     assert jugador.proximo_rival.partido.rival == "Real Madrid"
     assert entrenador.proximo_rival.partido is None
     assert entrenador.proximo_rival.motivo == "los entrenadores no llevan próximo rival"
+
+
+def test_ruta_muestra_el_proximo_rival(cliente_autenticado):
+    """P4 en /clausulas, justo después de "Jugador"; el entrenador sale como "sin dato"."""
+    from unittest.mock import patch
+
+    from fantasy.analytics.presentacion import ProximoPartido
+
+    con_rival = ProximoRival(
+        partido=ProximoPartido(
+            rival="Real Madrid", en_casa=False, jornada=3,
+            origen="futbolfantasy.com", capturado_en=AHORA,
+        )
+    )
+    filas = [_fila("Disponible"), _fila("Mister", posicion="Entrenador")]
+    filas[0] = ClausulaPresentada(**{**filas[0].__dict__, "proximo_rival": con_rival})
+    filas[1] = ClausulaPresentada(
+        **{**filas[1].__dict__,
+           "proximo_rival": ProximoRival.sin_dato("los entrenadores no llevan próximo rival")}
+    )
+    opciones = {"managers": ["M"], "posiciones": ["Defensa", "Entrenador"], "equipos": ["Málaga"]}
+
+    with patch("fantasy.api.app.obtener_clausulas", return_value=(filas, opciones)):
+        html = cliente_autenticado.get("/clausulas").text
+
+    assert html.index(">Jugador</th>") < html.index(">Próximo rival</th>") < html.index(">Manager</th>")
+    assert "vs Real Madrid" in html and "Fuera" in html
+    assert 'title="los entrenadores no llevan próximo rival">sin dato' in html

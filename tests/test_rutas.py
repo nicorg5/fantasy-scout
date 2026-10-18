@@ -276,3 +276,75 @@ def test_el_fragmento_htmx_de_mercado_sigue_siendo_solo_la_tabla(cliente_autenti
 
     assert "variacion-total" not in html
     assert "<table" in html
+
+
+# --- Próximo rival (specs/proximo-rival, T6) ---
+
+
+def _celda_rival(html: str, nombre: str):
+    """La celda "Próximo rival" de la fila de `nombre`: así el test comprueba que el
+    rival va en SU fila, no en cualquier parte de la página."""
+    from bs4 import BeautifulSoup
+
+    for fila in BeautifulSoup(html, "html.parser").select("tbody tr"):
+        if nombre in fila.get_text():
+            return fila.select_one('td[data-etiqueta="Próximo rival"]')
+    raise AssertionError(f"no hay fila para {nombre}")
+
+
+@pytest.mark.parametrize("ruta", RUTAS)
+def test_cada_fila_muestra_el_proximo_rival(cliente_autenticado, ruta):
+    """P4 y P7: rival, Casa/Fuera escrito y su origen, en una celda con etiqueta para la
+    vista en cards del móvil."""
+    jugadores = [_jugador(), _jugador("Larrubia", rival=_rival("Levante", en_casa=True))]
+    with patch(f"fantasy.api.app.{DESTINO[ruta]}", return_value=jugadores):
+        html = cliente_autenticado.get(ruta).text
+
+    assert '<th scope="col">Próximo rival</th>' in html
+    abel = _celda_rival(html, "Abel Bretones").get_text(" ", strip=True)
+    assert "vs Real Madrid" in abel and "Fuera" in abel
+    assert "fuente: futbolfantasy.com" in abel
+    larrubia = _celda_rival(html, "Larrubia").get_text(" ", strip=True)
+    assert "vs Levante" in larrubia and "Casa" in larrubia
+
+
+def test_la_columna_va_justo_despues_de_jugador(cliente_autenticado):
+    """Decisión del usuario (2026-10-18)."""
+    with patch("fantasy.api.app.obtener_plantilla", return_value=[_jugador()]):
+        html = cliente_autenticado.get("/plantilla").text
+
+    assert html.index(">Jugador</th>") < html.index(">Próximo rival</th>") < html.index(">Valor de mercado</th>")
+
+
+@pytest.mark.parametrize("ruta", RUTAS)
+def test_sin_rival_se_dice_sin_dato_con_motivo(cliente_autenticado, ruta):
+    """P5: ni hueco, ni guion, ni rival inventado. El motivo va en el `title`."""
+    with patch(f"fantasy.api.app.{DESTINO[ruta]}", return_value=[_jugador(rival=_rival(None))]):
+        html = cliente_autenticado.get(ruta).text
+
+    badge = _celda_rival(html, "Abel Bretones").select_one(".badge-no-disponible")
+    assert badge.get_text(strip=True) == "sin dato"
+    assert badge["title"] == "sin datos del próximo partido de su equipo"
+
+
+def test_el_rival_no_depende_de_la_analitica_en_pantalla(cliente_autenticado):
+    """P8: analítica no disponible y rival presente en la misma fila."""
+    with patch("fantasy.api.app.obtener_plantilla", return_value=[_jugador(con_analitica=False)]):
+        html = cliente_autenticado.get("/plantilla").text
+
+    assert "analítica no disponible" in html
+    assert "vs Real Madrid" in _celda_rival(html, "Abel Bretones").get_text()
+
+
+@pytest.mark.parametrize(
+    ("ruta", "destino"),
+    [("/plantilla/tabla", "obtener_plantilla"), ("/mercado/tabla", "obtener_mercado")],
+)
+def test_actualizar_datos_trae_el_rival_nuevo(cliente_autenticado, ruta, destino):
+    """P6: el fragmento de "Actualizar datos" pinta el rival que trae la pasada en vivo."""
+    nuevo = [_jugador(rival=_rival("Levante", en_casa=True))]
+    with patch(f"fantasy.api.app.{destino}", return_value=nuevo) as obtener:
+        html = cliente_autenticado.get(ruta).text
+
+    assert obtener.call_args.kwargs.get("en_vivo") is True
+    assert "vs Levante" in _celda_rival(html, "Abel Bretones").get_text()

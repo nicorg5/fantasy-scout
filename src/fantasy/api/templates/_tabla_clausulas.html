@@ -5,6 +5,7 @@
   <thead>
     <tr>
       <th scope="col">Jugador</th>
+      <th scope="col">Próximo rival</th>
       <th scope="col">Manager</th>
       <th scope="col">Cláusula</th>
       <th scope="col">Sobrepago</th>
@@ -21,6 +22,7 @@
       <td data-etiqueta="Jugador">
         {{ ui.identidad_jugador(f.nombre, f.equipo, f.posicion) }}
       </td>
+      <td data-etiqueta="Próximo rival">{{ ui.celda_proximo_rival(f.proximo_rival) }}</td>
       <td data-etiqueta="Manager">{{ f.manager }}</td>
       <td data-etiqueta="Cláusula">
         <span class="valor">{{ f.clausula_euros | euros }}</span>

@@ -304,6 +304,22 @@ main h1 + p { color: var(--ll-texto-tenue); font-size: .95rem; }
 .prob--media { color: var(--ll-aviso); }
 .prob--baja  { color: var(--ll-baja); }
 
+/* --- Próximo rival (specs/proximo-rival) --- */
+.rival { font-weight: 600; color: var(--ll-texto); }
+/* Casa/Fuera no es bueno ni malo: colores neutros, distintos del verde/rojo de las
+   tendencias y del ámbar de "sin dato". El texto sigue diciendo cuál es. */
+.lado {
+  display: inline-block;
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  padding: .1rem .35rem;
+  border-radius: var(--ll-radio-chico);
+}
+.lado--casa  { color: var(--ll-info);       background: rgba(90, 169, 255, .15); }
+.lado--fuera { color: var(--ll-texto-suave); background: rgba(154, 154, 173, .15); }
+
 /* Origen del dato: visible en pantalla, no solo en el payload (R39). Deliberadamente
    discreto: aparece en cada celda y compitiendo con la cifra la haria ilegible. */
 .origen {

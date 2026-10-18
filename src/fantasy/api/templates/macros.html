@@ -1,4 +1,4 @@
-{# Componentes compartidos por /plantilla y /mercado. #}
+{# Componentes compartidos por /plantilla, /mercado y /clausulas. #}
 
 {# El badge de degradación: se pinta cuando el bloque analítico viene 'unavailable'.
    Nunca un 0 ni un guion, que se confundirían con un dato real (R5). #}
@@ -79,5 +79,19 @@
     <span class="badge-no-disponible" title="el sitio no publica la variación semanal de este jugador">sin dato</span>
   {% else %}
     {{ badge_no_disponible(analitica) }}
+  {% endif %}
+{%- endmacro %}
+
+{# Próximo rival del equipo del jugador (specs/proximo-rival). Casa/Fuera va escrito: el
+   color solo acompaña. Es un dato del equipo y no de la analítica del jugador, así que
+   tiene su propio "sin dato" con su motivo, independiente de las otras celdas. #}
+{% macro celda_proximo_rival(proximo_rival) -%}
+  {% if proximo_rival.partido %}
+    {% set p = proximo_rival.partido %}
+    <span class="rival" title="Jornada {{ p.jornada }}">vs {{ p.rival }}</span>
+    <span class="lado lado--{{ 'casa' if p.en_casa else 'fuera' }}">{{ p.lado }}</span>
+    {{ etiqueta_origen(p.origen) }}
+  {% else %}
+    <span class="badge-no-disponible" title="{{ proximo_rival.motivo }}">sin dato</span>
   {% endif %}
 {%- endmacro %}
