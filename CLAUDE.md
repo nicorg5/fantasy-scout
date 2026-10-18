@@ -143,10 +143,10 @@ en segundos, nunca concurrentes; User-Agent identificable con `FANTASY_CONTACTO`
 ## Especificaciones
 
 Cada feature tiene su spec en `specs/<feature>/` (`requirements`, `design`, `tasks`):
-`mvp`, `observabilidad`, `registro`, `registro-social` y `proximo-rival`. Se versionan con el
-código, y el código las referencia por identificador (`R13`, `P4`, `design.md §Cron`). Si vas
-a tocar algo con una referencia así, léelas antes, empezando por `## Descubrimientos` de
-`tasks.md`.
+`mvp`, `observabilidad`, `registro`, `registro-social`, `proximo-rival` y
+`clausula-plantilla`. Se versionan con el código, y el código las referencia por
+identificador (`R13`, `P4`, `design.md §Cron`). Si vas a tocar algo con una referencia así,
+léelas antes, empezando por `## Descubrimientos` de `tasks.md`.
 
 El repo es **público**: antes de commitear una spec, quita ids reales de liga o equipo y
 rutas locales.
