@@ -130,11 +130,36 @@ class SubastaMercado:
         )
 
 
+def _fecha_de_bloqueo(datos: dict, camino: str) -> datetime | None:
+    """Hasta cuándo está bloqueada la cláusula. None si no viene: no todo jugador tiene
+    bloqueo activo.
+
+    Una fecha sin zona se rechaza igual que una rota: compararla con la hora actual (que
+    va con zona) daría un TypeError y un 500 en la pantalla (specs/clausula-plantilla, D1).
+    """
+    crudo = datos.get("buyoutClauseLockedEndTime")
+    if not crudo:
+        return None
+    try:
+        fecha = datetime.fromisoformat(crudo)
+    except (TypeError, ValueError) as exc:
+        raise RespuestaInesperada(
+            f"{camino}.buyoutClauseLockedEndTime", f"fecha no interpretable: {crudo!r}"
+        ) from exc
+    if fecha.tzinfo is None:
+        raise RespuestaInesperada(
+            f"{camino}.buyoutClauseLockedEndTime", f"fecha sin zona horaria: {crudo!r}"
+        )
+    return fecha
+
+
 @dataclass(frozen=True)
 class JugadorPlantilla:
     jugador: JugadorOficial
     clausula: int
     blindado: bool
+    # Hasta cuándo está bloqueada la cláusula; None si no hay bloqueo activo.
+    bloqueada_hasta: datetime | None
 
     @classmethod
     def desde_api(cls, datos: Any, camino: str = "players[]") -> JugadorPlantilla:
@@ -144,6 +169,7 @@ class JugadorPlantilla:
             ),
             clausula=_exigir(datos, "buyoutClause", int, camino),
             blindado=_exigir(datos, "isShielded", bool, camino),
+            bloqueada_hasta=_fecha_de_bloqueo(datos, camino),
         )
 
 
@@ -246,15 +272,6 @@ def parsear_plantilla_de_manager(datos: Any, camino: str = "plantilla") -> list[
     for i, crudo in enumerate(crudos):
         sub = f"{camino}.players[{i}]"
         manager = crudo.get("manager") or manager_equipo
-        crudo_fecha = crudo.get("buyoutClauseLockedEndTime")
-        bloqueada_hasta = None
-        if crudo_fecha:
-            try:
-                bloqueada_hasta = datetime.fromisoformat(crudo_fecha)
-            except ValueError as exc:
-                raise RespuestaInesperada(
-                    f"{sub}.buyoutClauseLockedEndTime", f"fecha no interpretable: {crudo_fecha!r}"
-                ) from exc
 
         jugadores.append(
             JugadorConClausula(
@@ -264,7 +281,7 @@ def parsear_plantilla_de_manager(datos: Any, camino: str = "plantilla") -> list[
                 manager=str(manager.get("managerName") or "desconocido"),
                 manager_id=str(manager.get("id") or ""),
                 clausula=_exigir(crudo, "buyoutClause", int, sub),
-                bloqueada_hasta=bloqueada_hasta,
+                bloqueada_hasta=_fecha_de_bloqueo(crudo, sub),
                 blindado=bool(crudo.get("isShielded", False)),
             )
         )

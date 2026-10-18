@@ -152,7 +152,9 @@ def test_obtener_mercado_por_defecto_lee_de_bd():
 
 
 def test_obtener_plantilla_en_vivo_scrapea_al_momento():
-    jugador_plantilla = JugadorPlantilla(jugador=OFICIALES[0], clausula=1, blindado=False)
+    jugador_plantilla = JugadorPlantilla(
+        jugador=OFICIALES[0], clausula=1, blindado=False, bloqueada_hasta=None
+    )
     cliente = _cliente_oficial_falso(
         plantilla=Plantilla(jugadores=[jugador_plantilla], dinero=0, valor_equipo=0, puntos=0)
     )

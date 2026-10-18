@@ -7,6 +7,7 @@ que estos tests comprueban la forma que la API devolvió de verdad, no una inven
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,7 @@ from fantasy.official.modelos import (
     JugadorOficial,
     Plantilla,
     parsear_mercado,
+    parsear_plantilla_de_manager,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -61,6 +63,42 @@ def test_plantilla_se_parsea(plantilla_cruda):
     assert plantilla.jugadores
     assert all(j.jugador.nombre for j in plantilla.jugadores)
     assert plantilla.valor_equipo > 0
+
+
+# --- fecha de bloqueo de la cláusula (specs/clausula-plantilla, C1) ---
+
+def test_plantilla_conserva_la_fecha_de_bloqueo(plantilla_cruda):
+    plantilla = Plantilla.desde_api(plantilla_cruda)
+
+    herrero = next(j for j in plantilla.jugadores if j.jugador.apodo == "A. Herrero")
+    assert herrero.bloqueada_hasta == datetime.fromisoformat("2026-08-21T18:01:01+02:00")
+
+
+def test_plantilla_sin_fecha_de_bloqueo_es_None(plantilla_cruda):
+    del plantilla_cruda["players"][0]["buyoutClauseLockedEndTime"]
+
+    assert Plantilla.desde_api(plantilla_cruda).jugadores[0].bloqueada_hasta is None
+
+
+@pytest.mark.parametrize("fecha", ["no-es-una-fecha", "2026-08-21T18:01:01"])
+def test_fecha_de_bloqueo_rota_o_sin_zona_falla_en_la_plantilla_propia(plantilla_cruda, fecha):
+    """Sin zona no se puede comparar con la hora actual: daría un TypeError y un 500."""
+    plantilla_cruda["players"][0]["buyoutClauseLockedEndTime"] = fecha
+
+    with pytest.raises(RespuestaInesperada) as exc:
+        Plantilla.desde_api(plantilla_cruda)
+
+    assert exc.value.camino == "plantilla.players[0].buyoutClauseLockedEndTime"
+
+
+@pytest.mark.parametrize("fecha", ["no-es-una-fecha", "2026-08-21T18:01:01"])
+def test_fecha_de_bloqueo_rota_o_sin_zona_falla_en_la_plantilla_de_un_rival(plantilla_cruda, fecha):
+    plantilla_cruda["players"][0]["buyoutClauseLockedEndTime"] = fecha
+
+    with pytest.raises(RespuestaInesperada) as exc:
+        parsear_plantilla_de_manager(plantilla_cruda)
+
+    assert exc.value.camino == "plantilla.players[0].buyoutClauseLockedEndTime"
 
 
 def test_campo_ausente_nombra_el_campo(mercado_crudo):
