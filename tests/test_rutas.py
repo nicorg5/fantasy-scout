@@ -17,6 +17,8 @@ from fantasy.analytics.presentacion import (
     BloqueAnalitico,
     JugadorPresentado,
     ProbabilidadJugar,
+    ProximoPartido,
+    ProximoRival,
     TendenciaValor,
 )
 from fantasy.official.errores import CredencialesRechazadas, RespuestaInesperada, TokenInvalido
@@ -25,7 +27,20 @@ RUTAS = ("/plantilla", "/mercado")
 DESTINO = {"/plantilla": "obtener_plantilla", "/mercado": "obtener_mercado"}
 
 
-def _jugador(nombre: str = "Abel Bretones", con_analitica: bool = True) -> JugadorPresentado:
+def _rival(rival: str | None = "Real Madrid", en_casa: bool = False) -> ProximoRival:
+    if rival is None:
+        return ProximoRival.sin_dato("sin datos del próximo partido de su equipo")
+    return ProximoRival(
+        partido=ProximoPartido(
+            rival=rival, en_casa=en_casa, jornada=3,
+            origen="futbolfantasy.com", capturado_en=datetime.now(timezone.utc),
+        )
+    )
+
+
+def _jugador(
+    nombre: str = "Abel Bretones", con_analitica: bool = True, rival: ProximoRival | None = None
+) -> JugadorPresentado:
     if con_analitica:
         analitica = BloqueAnalitico.desde_scraping(
             tendencia_valor=TendenciaValor(direccion="sube", variacion_euros=42_000),
@@ -39,6 +54,7 @@ def _jugador(nombre: str = "Abel Bretones", con_analitica: bool = True) -> Jugad
     return JugadorPresentado(
         id_oficial="1", nombre=nombre, equipo="12", posicion="Defensa",
         valor_mercado_euros=5_000_000, analitica=analitica,
+        proximo_rival=rival or _rival(),
     )
 
 

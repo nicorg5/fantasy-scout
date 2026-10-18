@@ -14,13 +14,13 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 
 from sqlalchemy.orm import Session
 
 from fantasy.analytics.presentacion import BloqueAnalitico, JugadorPresentado
-from fantasy.matching.analitica import construir_bloque_analitico
+from fantasy.matching.analitica import construir_bloque_analitico, construir_proximo_rival
 from fantasy.matching.emparejador import CandidatoExterno, Emparejamiento, emparejar
 from fantasy.matching.equipos import cargar_mapa_equipos, nombre_equipo
 from fantasy.matching.overrides import cargar_overrides
@@ -33,6 +33,7 @@ from fantasy.storage.analitica_repo import (
     a_probabilidad,
     a_tendencia,
     leer_analitica_mas_reciente,
+    leer_partidos_mas_recientes,
 )
 from fantasy.storage.fechas import fecha_local
 
@@ -53,10 +54,13 @@ class Analitica:
     # Fecha de captura: la UI la muestra para que nadie confunda analitica de ayer con
     # analitica de ahora mismo.
     capturado_el: date | None = None
+    # Próximo partido por id de futbolfantasy del EQUIPO (specs/proximo-rival). No cuenta
+    # para `hay_datos`: va por su cuenta, y puede haber rival sin tendencias o al revés.
+    partidos: dict[str, PartidoScrapeado] = field(default_factory=dict)
 
     @classmethod
-    def vacia(cls) -> Analitica:
-        return cls({}, {}, {})
+    def vacia(cls, partidos: dict[str, PartidoScrapeado] | None = None) -> Analitica:
+        return cls({}, {}, {}, partidos=partidos or {})
 
     @property
     def hay_datos(self) -> bool:
@@ -71,10 +75,13 @@ def recolectar_analitica_de_bd(sesion: Session, oficiales: list[JugadorOficial])
     cron lo deja guardado de noche y aquí solo se consulta y se empareja, que es cálculo
     puro.
     """
-    fecha, filas = leer_analitica_mas_reciente(sesion, fecha_local())
+    hoy = fecha_local()
+    # El rival se lee aparte y siempre: que falten las tendencias no lo invalida (P8).
+    _, partidos = leer_partidos_mas_recientes(sesion, hoy)
+    fecha, filas = leer_analitica_mas_reciente(sesion, hoy)
     if not filas:
         logger.warning("no hay analítica guardada: se servirá como no disponible")
-        return Analitica.vacia()
+        return Analitica.vacia(partidos)
 
     candidatos = [
         CandidatoExterno(f.id_externo, f.nombre_externo, f.equipo_externo) for f in filas
@@ -94,6 +101,7 @@ def recolectar_analitica_de_bd(sesion: Session, oficiales: list[JugadorOficial])
         probabilidades,
         len(sin_emparejar),
         capturado_el=fecha,
+        partidos=partidos,
     )
 
 
@@ -134,7 +142,7 @@ def recolectar_analitica(oficiales: list[JugadorOficial], *, ignorar_cache: bool
         for o in oficiales
         if (entrada := mapa.get(str(o.equipo_id))) and entrada.get("slug")
     }
-    por_id, _partidos = _scrapear_paginas_de_equipo(
+    por_id, partidos = _scrapear_paginas_de_equipo(
         cliente, equipos.values(), ignorar_cache=ignorar_cache
     )
     probabilidades = {
@@ -143,7 +151,11 @@ def recolectar_analitica(oficiales: list[JugadorOficial], *, ignorar_cache: bool
         if e.candidato.id_externo in por_id
     }
     return Analitica(
-        {e.id_oficial: e for e in emparejados}, tendencias, probabilidades, len(sin_emparejar)
+        {e.id_oficial: e for e in emparejados},
+        tendencias,
+        probabilidades,
+        len(sin_emparejar),
+        partidos=partidos,
     )
 
 
@@ -210,6 +222,9 @@ def componer(oficiales: list[JugadorOficial], analitica: Analitica) -> list[Juga
                 posicion=oficial.posicion,
                 valor_mercado_euros=oficial.valor_mercado,
                 analitica=bloque,
+                proximo_rival=construir_proximo_rival(
+                    oficial.equipo_id, analitica.partidos, posicion=oficial.posicion
+                ),
             )
         )
     return presentados

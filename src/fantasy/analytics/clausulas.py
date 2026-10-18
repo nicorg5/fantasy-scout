@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from fantasy.analytics.presentacion import BloqueAnalitico, ClausulaPresentada
 from fantasy.analytics.servicio import MOTIVO_SCRAPING_CAIDO, recolectar_analitica_de_bd
-from fantasy.matching.analitica import construir_bloque_analitico
+from fantasy.matching.analitica import construir_bloque_analitico, construir_proximo_rival
 from fantasy.matching.equipos import nombre_equipo
 from fantasy.official.cliente import ClienteOficial
 
@@ -129,6 +129,9 @@ def obtener_clausulas(
                 segundos_para_desbloqueo=item.segundos_para_desbloqueo(ahora),
                 blindado=item.blindado,
                 analitica=bloque,
+                proximo_rival=construir_proximo_rival(
+                    item.jugador.equipo_id, analitica.partidos, posicion=item.jugador.posicion
+                ),
             )
         )
 

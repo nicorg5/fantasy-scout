@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from fantasy.analytics.clausulas import FiltrosClausulas, _clave_de_orden
-from fantasy.analytics.presentacion import BloqueAnalitico, ClausulaPresentada
+from fantasy.analytics.presentacion import BloqueAnalitico, ClausulaPresentada, ProximoRival
 from fantasy.official.modelos import JugadorConClausula, JugadorOficial
 
 AHORA = datetime(2026, 8, 28, 12, 0, tzinfo=timezone.utc)
@@ -30,6 +30,7 @@ def _fila(nombre="X", clausula=2_000_000, valor=1_000_000, segundos=None,
         sobrepago_pct=(clausula - valor) / valor * 100 if valor else None,
         segundos_para_desbloqueo=segundos, blindado=blindado,
         analitica=BloqueAnalitico.no_disponible("sin datos"),
+        proximo_rival=ProximoRival.sin_dato("sin datos"),
     )
 
 
@@ -239,3 +240,43 @@ def test_ruta_ofrece_el_filtro_de_estado(cliente_autenticado):
 
     assert 'name="estado"' in html
     assert 'value="disponibles" selected' in html
+
+
+# --- Próximo rival (specs/proximo-rival, T5) ---
+
+
+def test_las_clausulas_llevan_el_rival_de_cada_jugador():
+    """P4 en /clausulas: misma regla que plantilla y mercado, entrenadores incluidos."""
+    from unittest.mock import MagicMock, patch
+
+    from fantasy.analytics.clausulas import obtener_clausulas
+    from fantasy.analytics.servicio import Analitica
+    from fantasy.scrapers.parsers import PartidoScrapeado
+
+    def _con_clausula(jugador):
+        return JugadorConClausula(
+            jugador=jugador, manager="M", manager_id="1", clausula=2_000_000,
+            bloqueada_hasta=None, blindado=False,
+        )
+
+    cliente = MagicMock()
+    cliente.obtener_liga_y_equipo.return_value = ("liga", 1)
+    cliente.obtener_clausulas_de_la_liga.return_value = [
+        _con_clausula(_oficial()), _con_clausula(_oficial(posicion="Entrenador")),
+    ]
+    partido = PartidoScrapeado(rival_nombre="Real Madrid", en_casa=False, jornada=3, capturado_en=AHORA)
+
+    with (
+        patch("fantasy.analytics.clausulas.ClienteOficial", return_value=cliente),
+        patch(
+            "fantasy.analytics.clausulas.recolectar_analitica_de_bd",
+            return_value=Analitica.vacia({"11": partido}),
+        ),
+    ):
+        filas, _ = obtener_clausulas(sesion=None, usuario_id=None)
+
+    jugador = next(f for f in filas if f.posicion == "Defensa")
+    entrenador = next(f for f in filas if f.posicion == "Entrenador")
+    assert jugador.proximo_rival.partido.rival == "Real Madrid"
+    assert entrenador.proximo_rival.partido is None
+    assert entrenador.proximo_rival.motivo == "los entrenadores no llevan próximo rival"

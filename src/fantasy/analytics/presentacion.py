@@ -154,6 +154,47 @@ class BloqueAnalitico:
 
 
 @dataclass(frozen=True)
+class ProximoPartido:
+    """Próximo partido de LaLiga del equipo del jugador. Dato scrapeado, con su origen."""
+
+    rival: str
+    en_casa: bool
+    jornada: int
+    origen: str
+    capturado_en: datetime
+
+    @property
+    def lado(self) -> str:
+        return "Casa" if self.en_casa else "Fuera"
+
+
+@dataclass(frozen=True)
+class ProximoRival:
+    """La celda "Próximo rival": o un partido, o el motivo de que no lo haya.
+
+    Va aparte de `BloqueAnalitico` a propósito (specs/proximo-rival, D4): aquel depende
+    de emparejar al JUGADOR con futbolfantasy, y el rival solo depende de su EQUIPO. Un
+    jugador sin emparejar no tiene tendencia, pero su rival se sabe igual, y un fallo de
+    uno no puede llevarse por delante al otro.
+
+    Misma invariante que el resto: un dato ausente es `None` + motivo, nunca un hueco.
+    """
+
+    partido: ProximoPartido | None = None
+    motivo: str | None = None
+
+    def __post_init__(self) -> None:
+        if (self.partido is None) == (self.motivo is None):
+            raise ValueError("el próximo rival lleva un partido o un motivo, exactamente uno")
+        if self.motivo is not None and not self.motivo.strip():
+            raise ValueError("un próximo rival sin dato necesita un motivo legible")
+
+    @classmethod
+    def sin_dato(cls, motivo: str) -> ProximoRival:
+        return cls(motivo=motivo)
+
+
+@dataclass(frozen=True)
 class JugadorPresentado:
     """Un jugador tal y como lo pinta una fila de /plantilla o /mercado."""
 
@@ -163,6 +204,9 @@ class JugadorPresentado:
     posicion: str
     valor_mercado_euros: int
     analitica: BloqueAnalitico
+    # Obligatorio a propósito: con un valor por defecto, una pantalla que olvidara
+    # rellenarlo enseñaría "sin dato" sin que nada fallara.
+    proximo_rival: ProximoRival
     origen_valor: str = ORIGEN_OFICIAL
 
 
@@ -256,6 +300,7 @@ class ClausulaPresentada:
     segundos_para_desbloqueo: float | None
     blindado: bool
     analitica: BloqueAnalitico
+    proximo_rival: ProximoRival
 
     @property
     def fichable(self) -> bool:

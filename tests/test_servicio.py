@@ -15,10 +15,12 @@ from fantasy.analytics.servicio import (
     obtener_mercado,
     obtener_plantilla,
     recolectar_analitica,
+    recolectar_analitica_de_bd,
 )
 from fantasy.matching.emparejador import CandidatoExterno, Emparejamiento
 from fantasy.official.modelos import JugadorPlantilla, Plantilla, SubastaMercado
-from fantasy.scrapers.parsers import ProbabilidadScrapeada, TendenciaScrapeada
+from fantasy.scrapers.degradacion import PaginaEquipo
+from fantasy.scrapers.parsers import PartidoScrapeado, ProbabilidadScrapeada, TendenciaScrapeada
 
 AHORA = datetime.now(timezone.utc)
 
@@ -164,3 +166,84 @@ def test_obtener_plantilla_en_vivo_scrapea_al_momento():
 
     en_vivo.assert_called_once()
     en_bd.assert_not_called()
+
+
+# --- Próximo rival (specs/proximo-rival, T5) ---
+
+# Los dos oficiales son del Málaga: 12 en la API oficial, "11" en futbolfantasy.
+PARTIDO_MALAGA = PartidoScrapeado(rival_nombre="Real Madrid", en_casa=False, jornada=3, capturado_en=AHORA)
+
+
+def test_cada_jugador_sale_con_el_rival_de_su_equipo():
+    """P4: el emparejado y el que no se pudo emparejar, los dos con rival (D1)."""
+    analitica = _analitica_completa()
+    analitica = Analitica(
+        analitica.emparejamientos, analitica.tendencias, analitica.probabilidades,
+        partidos={"11": PARTIDO_MALAGA},
+    )
+
+    for p in componer(OFICIALES, analitica):
+        assert p.proximo_rival.partido.rival == "Real Madrid"
+        assert p.proximo_rival.partido.lado == "Fuera"
+
+
+def test_sin_tendencias_el_rival_se_sirve_igual():
+    """P8: analítica no disponible, rival presente."""
+    presentados = componer(OFICIALES, Analitica.vacia({"11": PARTIDO_MALAGA}))
+
+    for p in presentados:
+        assert not p.analitica.disponible
+        assert p.proximo_rival.partido.rival == "Real Madrid"
+
+
+def test_sin_partidos_el_rival_es_sin_dato_con_motivo():
+    """P5: nunca un hueco mudo."""
+    for p in componer(OFICIALES, _analitica_completa()):
+        assert p.proximo_rival.partido is None
+        assert p.proximo_rival.motivo
+
+
+def test_de_bd_se_lee_el_rival_aunque_no_haya_analitica(sesion_db):
+    """La ruta normal (P4): sin filas de analítica pero con partido guardado, el rival
+    llega. Fecha imposible para no tocar datos reales."""
+    from datetime import date
+
+    from sqlalchemy import delete
+
+    from fantasy.storage.analitica_repo import guardar_partidos_del_dia
+    from fantasy.storage.modelos import AnaliticaDiaria, ProximoPartido
+
+    dia = date(2099, 6, 1)
+    try:
+        sesion_db.execute(delete(AnaliticaDiaria).where(AnaliticaDiaria.fecha >= date(2099, 1, 1)))
+        guardar_partidos_del_dia(sesion_db, dia, {"11": PARTIDO_MALAGA})
+        with patch("fantasy.analytics.servicio.fecha_local", return_value=dia):
+            analitica = recolectar_analitica_de_bd(sesion_db, OFICIALES)
+    finally:
+        sesion_db.execute(delete(ProximoPartido).where(ProximoPartido.fecha == dia))
+        sesion_db.commit()
+
+    assert not analitica.hay_datos
+    assert analitica.partidos["11"].rival_nombre == "Real Madrid"
+
+
+def test_en_vivo_se_recogen_los_partidos_en_la_misma_pasada():
+    """P6: "Actualizar datos" refresca también el rival, con la misma descarga por equipo."""
+    tendencia = TendenciaScrapeada(
+        "11230", "abel bretones", "11", TendenciaValor(direccion="sube", variacion_euros=1), AHORA
+    )
+    nuevo = PartidoScrapeado(rival_nombre="Levante", en_casa=True, jornada=4, capturado_en=AHORA)
+    descargas = []
+
+    def pagina(_cliente, slug, nombre, **kwargs):
+        descargas.append((slug, nombre, kwargs))
+        return PaginaEquipo(partido=nuevo)
+
+    with (
+        patch("fantasy.analytics.servicio.obtener_tendencias_mercado", return_value=[tendencia]),
+        patch("fantasy.analytics.servicio.obtener_pagina_equipo", side_effect=pagina),
+    ):
+        analitica = recolectar_analitica(OFICIALES, ignorar_cache=True)
+
+    assert descargas == [("malaga", "Málaga", {"ignorar_cache": True})], "una por equipo"
+    assert analitica.partidos == {"11": nuevo}

@@ -10,7 +10,7 @@ from unittest.mock import patch
 import pytest
 from sqlalchemy import delete, func, select
 
-from fantasy.analytics.presentacion import BloqueAnalitico, JugadorPresentado
+from fantasy.analytics.presentacion import BloqueAnalitico, JugadorPresentado, ProximoRival
 from fantasy.analytics.servicio import ScrapingCompleto
 from fantasy.scrapers.parsers import PartidoScrapeado
 from fantasy.storage.modelos import EjecucionCron, EstadoAnalitica, Jugador, SnapshotMercado
@@ -86,6 +86,7 @@ def _presentado(con_analitica: bool) -> JugadorPresentado:
     return JugadorPresentado(
         id_oficial="test-snap-1", nombre="Snapshot", equipo="Málaga", posicion="Defensa",
         valor_mercado_euros=1_000_000, analitica=bloque,
+        proximo_rival=ProximoRival.sin_dato("sin datos"),
     )
 
 

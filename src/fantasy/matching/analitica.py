@@ -1,4 +1,5 @@
-"""Une el jugador oficial con su analítica scrapeada, respetando la regla de degradación.
+"""Une el jugador oficial con su analítica scrapeada y con el próximo rival de su equipo,
+respetando la regla de degradación.
 
 Este módulo es el que garantiza R26/T5.6: **un jugador sin match se sirve como analítica
 "no disponible", nunca con datos de otro jugador ni con campos vacíos.** Es el único
@@ -10,9 +11,10 @@ from __future__ import annotations
 
 import logging
 
-from fantasy.analytics.presentacion import BloqueAnalitico
+from fantasy.analytics.presentacion import BloqueAnalitico, ProximoPartido, ProximoRival
 from fantasy.matching.emparejador import POSICION_ENTRENADOR, SITIO, Emparejamiento
-from fantasy.scrapers.parsers import ProbabilidadScrapeada, TendenciaScrapeada
+from fantasy.matching.equipos import equipo_futbolfantasy
+from fantasy.scrapers.parsers import PartidoScrapeado, ProbabilidadScrapeada, TendenciaScrapeada
 
 logger = logging.getLogger("fantasy.matching.analitica")
 
@@ -62,4 +64,43 @@ def construir_bloque_analitico(
         motivo_probabilidad=(
             None if probabilidad else "no aparece en el once probable de su equipo"
         ),
+    )
+
+
+MOTIVO_RIVAL_ENTRENADOR = "los entrenadores no llevan próximo rival"
+MOTIVO_RIVAL_EQUIPO_SIN_MAPEAR = "equipo sin correspondencia en el sitio de analítica"
+MOTIVO_RIVAL_SIN_PARTIDO = "sin datos del próximo partido de su equipo"
+
+
+def construir_proximo_rival(
+    equipo_id_oficial: int | str,
+    partidos: dict[str, PartidoScrapeado],
+    posicion: str | None = None,
+) -> ProximoRival:
+    """Devuelve el próximo rival del jugador, o "sin dato" con el motivo.
+
+    `partidos` va indexado por el id de futbolfantasy del EQUIPO. El cruce va por el mapa
+    de equipos, que es exacto y versionado: NO pasa por el emparejamiento de jugadores,
+    así que un jugador sin emparejar también tiene rival (specs/proximo-rival, D1).
+    """
+    if posicion == POSICION_ENTRENADOR:
+        # Decisión del usuario (2026-10-18), no falta de dato: el de su equipo existe.
+        return ProximoRival.sin_dato(MOTIVO_RIVAL_ENTRENADOR)
+
+    equipo = equipo_futbolfantasy(equipo_id_oficial)
+    if equipo is None:
+        return ProximoRival.sin_dato(MOTIVO_RIVAL_EQUIPO_SIN_MAPEAR)
+
+    partido = partidos.get(equipo)
+    if partido is None:
+        return ProximoRival.sin_dato(MOTIVO_RIVAL_SIN_PARTIDO)
+
+    return ProximoRival(
+        partido=ProximoPartido(
+            rival=partido.rival_nombre,
+            en_casa=partido.en_casa,
+            jornada=partido.jornada,
+            origen=SITIO,
+            capturado_en=partido.capturado_en,
+        )
     )

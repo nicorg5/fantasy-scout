@@ -10,6 +10,8 @@ from fantasy.analytics.presentacion import (
     BloqueAnalitico,
     JugadorPresentado,
     ProbabilidadJugar,
+    ProximoPartido,
+    ProximoRival,
     TendenciaValor,
     formatear_euros,
 )
@@ -23,6 +25,7 @@ def _jugador(analitica: BloqueAnalitico) -> JugadorPresentado:
         posicion="Delantero",
         valor_mercado_euros=1_000_000,
         analitica=analitica,
+        proximo_rival=ProximoRival.sin_dato("sin datos"),
     )
 
 
@@ -119,6 +122,7 @@ def _presentado(direccion: str, euros: int, con_analitica: bool = True):
     return JugadorPresentado(
         id_oficial="x", nombre="X", equipo="Málaga", posicion="Defensa",
         valor_mercado_euros=1_000_000, analitica=bloque,
+        proximo_rival=ProximoRival.sin_dato("sin datos"),
     )
 
 
@@ -166,3 +170,36 @@ def test_variacion_parcial_se_marca_como_incompleta():
     assert v.jugadores_con_dato == 1
     assert v.jugadores_totales == 2
     assert v.completa is False
+
+
+# --- Próximo rival (specs/proximo-rival, P5) ---
+
+
+def _partido_presentado(en_casa=False):
+    return ProximoPartido(
+        rival="Real Madrid", en_casa=en_casa, jornada=3,
+        origen="futbolfantasy.com", capturado_en=datetime.now(timezone.utc),
+    )
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [{}, {"motivo": "   "}, "ambos"],
+    ids=["ni-partido-ni-motivo", "motivo-vacio", "partido-y-motivo"],
+)
+def test_proximo_rival_sin_dato_exige_motivo(kwargs):
+    """P5: la invariante vive en el tipo. Un hueco sin explicar no se puede construir."""
+    if kwargs == "ambos":
+        kwargs = {"partido": _partido_presentado(), "motivo": "sobra"}
+    with pytest.raises(ValueError):
+        ProximoRival(**kwargs)
+
+
+def test_proximo_rival_con_partido_o_sin_dato():
+    assert ProximoRival(partido=_partido_presentado()).partido.rival == "Real Madrid"
+    assert ProximoRival.sin_dato("porque sí").motivo == "porque sí"
+
+
+def test_lado_del_partido_es_texto_legible():
+    assert _partido_presentado(en_casa=True).lado == "Casa"
+    assert _partido_presentado(en_casa=False).lado == "Fuera"

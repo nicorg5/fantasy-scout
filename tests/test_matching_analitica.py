@@ -1,13 +1,20 @@
-"""T5.6/R26: sin match => analítica no disponible, nunca datos de otro jugador."""
+"""T5.6/R26: sin match => analítica no disponible, nunca datos de otro jugador. Y el próximo
+rival, que se cruza por equipo y no por jugador (specs/proximo-rival)."""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
 from fantasy.analytics.presentacion import ProbabilidadJugar, TendenciaValor
-from fantasy.matching.analitica import construir_bloque_analitico
+from fantasy.matching.analitica import (
+    MOTIVO_RIVAL_ENTRENADOR,
+    MOTIVO_RIVAL_EQUIPO_SIN_MAPEAR,
+    MOTIVO_RIVAL_SIN_PARTIDO,
+    construir_bloque_analitico,
+    construir_proximo_rival,
+)
 from fantasy.matching.emparejador import CandidatoExterno, Emparejamiento
-from fantasy.scrapers.parsers import ProbabilidadScrapeada, TendenciaScrapeada
+from fantasy.scrapers.parsers import PartidoScrapeado, ProbabilidadScrapeada, TendenciaScrapeada
 
 AHORA = datetime.now(timezone.utc)
 
@@ -117,3 +124,56 @@ def test_bug_real_de_cobertura_resuelto():
     assert len(resultado) == 1
     assert resultado[0].id_futbolfantasy == "11830"
     assert resultado[0].probabilidad.porcentaje == 80
+
+
+# --- Próximo rival (specs/proximo-rival, T4) ---
+
+# El Málaga es 12 en la API oficial y 11 en futbolfantasy: justo el caso en que un cruce
+# directo de ids emparejaría equipos equivocados sin dar error.
+MALAGA_OFICIAL, MALAGA_FF = 12, "11"
+PARTIDOS = {
+    MALAGA_FF: PartidoScrapeado(rival_nombre="Real Madrid", en_casa=False, jornada=3, capturado_en=AHORA)
+}
+
+
+def test_el_rival_se_cruza_por_el_mapa_de_equipos():
+    rival = construir_proximo_rival(MALAGA_OFICIAL, PARTIDOS, posicion="Delantero")
+
+    assert rival.motivo is None
+    assert rival.partido.rival == "Real Madrid"
+    assert rival.partido.en_casa is False
+    assert rival.partido.jornada == 3
+    assert rival.partido.origen == "futbolfantasy.com"
+    assert rival.partido.capturado_en == AHORA
+
+
+def test_el_id_oficial_no_se_confunde_con_el_de_futbolfantasy():
+    """El 11 oficial es el Levante: no puede recibir el partido del 11 de futbolfantasy."""
+    rival = construir_proximo_rival(11, PARTIDOS, posicion="Delantero")
+
+    assert rival.partido is None
+    assert rival.motivo == MOTIVO_RIVAL_SIN_PARTIDO
+
+
+def test_el_entrenador_no_lleva_rival_aunque_su_equipo_si():
+    """Decisión del usuario (2026-10-18)."""
+    rival = construir_proximo_rival(MALAGA_OFICIAL, PARTIDOS, posicion="Entrenador")
+
+    assert rival.partido is None
+    assert rival.motivo == MOTIVO_RIVAL_ENTRENADOR
+
+
+def test_equipo_sin_mapear_tiene_su_motivo():
+    rival = construir_proximo_rival(99999, PARTIDOS, posicion="Delantero")
+
+    assert rival.motivo == MOTIVO_RIVAL_EQUIPO_SIN_MAPEAR
+
+
+def test_el_rival_no_depende_del_emparejamiento_del_jugador():
+    """D1: un jugador sin emparejar con futbolfantasy no tiene tendencia, pero su rival
+    se sabe igual, porque solo depende de su equipo."""
+    bloque = construir_bloque_analitico("sin-match", {}, {"A": _tendencia("A")})
+    rival = construir_proximo_rival(MALAGA_OFICIAL, PARTIDOS, posicion="Delantero")
+
+    assert not bloque.disponible
+    assert rival.partido is not None
