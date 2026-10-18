@@ -22,17 +22,13 @@ from sqlalchemy.orm import Session
 from fantasy.analytics.presentacion import BloqueAnalitico, JugadorPresentado
 from fantasy.matching.analitica import construir_bloque_analitico
 from fantasy.matching.emparejador import CandidatoExterno, Emparejamiento, emparejar
-from fantasy.matching.equipos import (
-    cargar_mapa_equipos,
-    equipo_futbolfantasy,
-    nombre_equipo,
-    slug_equipo_futbolfantasy,
-)
+from fantasy.matching.equipos import cargar_mapa_equipos, nombre_equipo
 from fantasy.matching.overrides import cargar_overrides
 from fantasy.official.cliente import ClienteOficial
 from fantasy.official.modelos import JugadorOficial
 from fantasy.scrapers.cliente_http import ClienteScraping
-from fantasy.scrapers.degradacion import obtener_probabilidades_equipo, obtener_tendencias_mercado
+from fantasy.scrapers.degradacion import obtener_pagina_equipo, obtener_tendencias_mercado
+from fantasy.scrapers.parsers import PartidoScrapeado, ProbabilidadScrapeada, TendenciaScrapeada
 from fantasy.storage.analitica_repo import (
     a_probabilidad,
     a_tendencia,
@@ -128,66 +124,65 @@ def recolectar_analitica(oficiales: list[JugadorOficial], *, ignorar_cache: bool
             "jugadores sin emparejar: %d de %d", len(sin_emparejar), len(oficiales)
         )
 
-    probabilidades = _probabilidades_de_los_equipos(
-        cliente, oficiales, emparejados, ignorar_cache=ignorar_cache
+    # Las páginas de equipo se direccionan por SLUG (`/laliga/equipos/malaga`), no por el
+    # id numérico: usar el número en la URL devuelve 404, pasó de verdad. El mapa da slug
+    # y nombre por el id oficial del equipo; uno sin mapear se queda sin probabilidad ni
+    # rival.
+    mapa = cargar_mapa_equipos()
+    equipos = {
+        entrada["id"]: entrada
+        for o in oficiales
+        if (entrada := mapa.get(str(o.equipo_id))) and entrada.get("slug")
+    }
+    por_id, _partidos = _scrapear_paginas_de_equipo(
+        cliente, equipos.values(), ignorar_cache=ignorar_cache
     )
+    probabilidades = {
+        e.candidato.id_externo: por_id[e.candidato.id_externo]
+        for e in emparejados
+        if e.candidato.id_externo in por_id
+    }
     return Analitica(
         {e.id_oficial: e for e in emparejados}, tendencias, probabilidades, len(sin_emparejar)
     )
 
 
-def _probabilidades_de_los_equipos(
-    cliente: ClienteScraping,
-    oficiales: list[JugadorOficial],
-    emparejados: list[Emparejamiento],
-    *,
-    ignorar_cache: bool = False,
-) -> dict:
-    """La probabilidad vive en la página de cada equipo, así que hay que visitar una por
-    equipo implicado. Son pocos (los del mercado del día) y el cliente ya serializa las
-    peticiones con su rate limit.
-    """
-    # id_futbolfantasy -> slug: la página de equipo se direcciona por slug.
-    slug_por_id_equipo = {
-        id_ff: slug
-        for o in oficiales
-        if (id_ff := equipo_futbolfantasy(o.equipo_id))
-        and (slug := slug_equipo_futbolfantasy(o.equipo_id))
-    }
-    por_id = _scrapear_probabilidades(
-        cliente, slug_por_id_equipo.values(), ignorar_cache=ignorar_cache
-    )
-    return {
-        e.candidato.id_externo: por_id[e.candidato.id_externo]
-        for e in emparejados
-        if e.candidato.id_externo in por_id
-    }
+def _scrapear_paginas_de_equipo(
+    cliente: ClienteScraping, equipos, *, ignorar_cache: bool = False
+) -> tuple[dict[str, ProbabilidadScrapeada], dict[str, PartidoScrapeado]]:
+    """Descarga la página de cada equipo (UNA petición por equipo, ver
+    `obtener_pagina_equipo`) y devuelve:
 
+    - las probabilidades indexadas por el id numérico de futbolfantasy del JUGADOR, el
+      MISMO que usa la tabla de mercado (`TendenciaScrapeada.id_futbolfantasy`);
+    - el próximo partido indexado por el id de futbolfantasy del EQUIPO.
 
-def _scrapear_probabilidades(
-    cliente: ClienteScraping, slugs_equipo, *, ignorar_cache: bool = False
-) -> dict[str, object]:
-    """Descarga la página de cada equipo y devuelve las probabilidades indexadas por el
-    id numérico de futbolfantasy — el MISMO que usa la tabla de mercado
-    (`TendenciaScrapeada.id_futbolfantasy`).
+    `equipos` son entradas del mapa de equipos (`id`, `nombre`, `slug`).
 
-    Antes esto cruzaba por NOMBRE con tolerancia a defectos del sitio (sufijos,
-    similitud, apellido), porque la página de equipo solo daba un slug de texto. Se
-    simplificó al descubrir (2026-09-02, con datos reales) que el widget correcto del
-    "campo" ya expone el id numérico exacto en el propio HTML (`class="jugador_11830"`
-    para Huijsen), lo que hace innecesaria cualquier comparación aproximada — y de paso
-    corrige el bug real que tenía: el widget antiguo (`a.camiseta[data-probabilidad]`)
-    solo cubría un subconjunto del equipo (20/26 verificado), dejando fuera a titulares
-    habituales como Huijsen o Bellingham sin motivo aparente.
+    Antes la probabilidad se cruzaba por NOMBRE con tolerancia a defectos del sitio
+    (sufijos, similitud, apellido), porque la página de equipo solo daba un slug de
+    texto. Se simplificó al descubrir (2026-09-02, con datos reales) que el widget
+    correcto del "campo" ya expone el id numérico exacto en el propio HTML
+    (`class="jugador_11830"` para Huijsen), lo que hace innecesaria cualquier comparación
+    aproximada — y de paso corrige el bug real que tenía: el widget antiguo
+    (`a.camiseta[data-probabilidad]`) solo cubría un subconjunto del equipo (20/26
+    verificado), dejando fuera a titulares habituales como Huijsen o Bellingham sin motivo
+    aparente.
 
     Ids repetidos entre equipos no son un problema: son globales en el sitio, no por
     equipo, así que un dict plano basta.
     """
-    por_id: dict[str, object] = {}
-    for slug in slugs_equipo:
-        for probabilidad in obtener_probabilidades_equipo(cliente, slug, ignorar_cache=ignorar_cache):
-            por_id[probabilidad.id_futbolfantasy] = probabilidad
-    return por_id
+    probabilidades: dict[str, ProbabilidadScrapeada] = {}
+    partidos: dict[str, PartidoScrapeado] = {}
+    for equipo in equipos:
+        pagina = obtener_pagina_equipo(
+            cliente, equipo["slug"], equipo["nombre"], ignorar_cache=ignorar_cache
+        )
+        for probabilidad in pagina.probabilidades:
+            probabilidades[probabilidad.id_futbolfantasy] = probabilidad
+        if pagina.partido is not None:
+            partidos[equipo["id"]] = pagina.partido
+    return probabilidades, partidos
 
 
 def componer(oficiales: list[JugadorOficial], analitica: Analitica) -> list[JugadorPresentado]:
@@ -270,37 +265,54 @@ def obtener_plantilla(
     return componer(oficiales, analitica)
 
 
-def scrapear_todo_para_guardar(cliente: ClienteScraping | None = None):
-    """Scrapea la analítica de TODOS los jugadores, para que el cron la persista.
+@dataclass(frozen=True)
+class ScrapingCompleto:
+    """Lo que el cron scrapea para guardar. Un dataclass en vez de una tupla: con tres
+    piezas, el orden posicional ya era una trampa."""
+
+    tendencias: list[TendenciaScrapeada]
+    # Por id de futbolfantasy del jugador.
+    probabilidades: dict[str, ProbabilidadScrapeada]
+    # Por id de futbolfantasy del equipo (specs/proximo-rival, D1).
+    partidos: dict[str, PartidoScrapeado]
+
+    @classmethod
+    def vacio(cls) -> ScrapingCompleto:
+        return cls([], {}, {})
+
+
+def scrapear_todo_para_guardar(cliente: ClienteScraping | None = None) -> ScrapingCompleto:
+    """Scrapea la analítica de TODOS los jugadores y el próximo partido de cada equipo,
+    para que el cron lo persista.
 
     Distinto de `recolectar_analitica`, que solo resuelve los jugadores que hacen falta
     en ese momento: aquí se guarda todo lo que el sitio publica, porque la web necesitará
     después analítica de jugadores que no están en el mercado (los de cada plantilla).
 
-    Devuelve (tendencias, probabilidades indexadas por id de futbolfantasy). Nunca lanza.
+    Nunca lanza.
     """
     cliente = cliente or ClienteScraping()
 
     tendencias = obtener_tendencias_mercado(cliente)
     if not tendencias:
         logger.warning("scraping completo: sin tendencias, no hay nada que guardar")
-        return [], {}
+        return ScrapingCompleto.vacio()
 
     # Una página por equipo, con el rate limit de por medio. Lento a propósito: esto
-    # corre de noche y nadie espera. id_futbolfantasy -> slug, para poder pedir la URL.
-    slug_por_id = {v["id"]: v["slug"] for v in cargar_mapa_equipos().values() if v.get("slug")}
+    # corre de noche y nadie espera. El mapa se indexa por id oficial; aquí hace falta
+    # por id de futbolfantasy, que es el que trae la tabla de mercado.
+    por_id_ff = {v["id"]: v for v in cargar_mapa_equipos().values() if v.get("slug")}
     equipos_implicados = sorted({t.equipo_externo for t in tendencias if t.equipo_externo})
-    slugs_equipo = []
+    equipos = []
     for id_equipo in equipos_implicados:
-        slug = slug_por_id.get(id_equipo)
-        if not slug:
-            logger.info("equipo %s sin slug conocido: se omite su probabilidad", id_equipo)
+        if id_equipo not in por_id_ff:
+            logger.info("equipo %s sin slug conocido: se omiten su probabilidad y su rival", id_equipo)
             continue
-        slugs_equipo.append(slug)
+        equipos.append(por_id_ff[id_equipo])
 
-    # Cruce por id numérico exacto (ver `_scrapear_probabilidades`): ya no hace falta
+    # Cruce por id numérico exacto (ver `_scrapear_paginas_de_equipo`): ya no hace falta
     # comparar nombres.
-    por_id = _scrapear_probabilidades(cliente, slugs_equipo)
+    por_id, partidos = _scrapear_paginas_de_equipo(cliente, equipos)
     probabilidades = {
         t.id_futbolfantasy: por_id[t.id_futbolfantasy]
         for t in tendencias
@@ -308,7 +320,7 @@ def scrapear_todo_para_guardar(cliente: ClienteScraping | None = None):
     }
 
     logger.info(
-        "scraping completo: %d jugadores, %d con probabilidad",
-        len(tendencias), len(probabilidades),
+        "scraping completo: %d jugadores, %d con probabilidad, %d equipos con próximo partido",
+        len(tendencias), len(probabilidades), len(partidos),
     )
-    return tendencias, probabilidades
+    return ScrapingCompleto(tendencias, probabilidades, partidos)

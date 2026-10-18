@@ -9,12 +9,15 @@ puede fallar de más formas (timeout, DNS, 5xx, sitio caído).
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 
 from fantasy.scrapers.cliente_http import ClienteScraping
 from fantasy.scrapers.parsers import (
+    PartidoScrapeado,
     ProbabilidadScrapeada,
     TendenciaScrapeada,
     parsear_probabilidad_equipo,
+    parsear_proximo_partido,
     parsear_tendencias_mercado,
 )
 
@@ -36,12 +39,33 @@ def obtener_tendencias_mercado(
     return parsear_tendencias_mercado(html)
 
 
-def obtener_probabilidades_equipo(
-    cliente: ClienteScraping, slug_equipo: str, *, ignorar_cache: bool = False
-) -> list[ProbabilidadScrapeada]:
+@dataclass(frozen=True)
+class PaginaEquipo:
+    """Lo que se saca de la página de un equipo. Cada dato degrada por su cuenta: si
+    falla el partido, la probabilidad sigue llegando, y al revés (P8)."""
+
+    probabilidades: list[ProbabilidadScrapeada] = field(default_factory=list)
+    partido: PartidoScrapeado | None = None
+
+
+def obtener_pagina_equipo(
+    cliente: ClienteScraping, slug_equipo: str, nombre_equipo: str, *, ignorar_cache: bool = False
+) -> PaginaEquipo:
+    """Descarga la página del equipo UNA vez y extrae de ella todo lo que usamos.
+
+    Una función por dato con su propia descarga saldría de la caché en el cron, pero
+    con "Actualizar datos" (`ignorar_cache=True`) haría dos peticiones por equipo, y
+    las reglas del scraping piden las mínimas (specs/proximo-rival/design.md §D2).
+
+    `nombre_equipo` es el `nombre` del mapa de equipos: el parser del partido lo
+    necesita para saber si el equipo juega en casa.
+    """
     html = cliente.get_html_seguro(
         f"https://www.futbolfantasy.com/laliga/equipos/{slug_equipo}", ignorar_cache=ignorar_cache
     )
     if html is None:
-        return []
-    return parsear_probabilidad_equipo(html)
+        return PaginaEquipo()
+    return PaginaEquipo(
+        probabilidades=parsear_probabilidad_equipo(html),
+        partido=parsear_proximo_partido(html, nombre_equipo),
+    )

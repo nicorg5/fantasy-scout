@@ -83,19 +83,20 @@ def test_cruce_de_probabilidades_es_por_id_exacto():
     el mismo 11830 que `data-id` en la tabla de mercado). Ya no hace falta tolerar
     variantes de escritura para este cruce en absoluto.
     """
-    from fantasy.analytics.servicio import _scrapear_probabilidades
-
-    def cliente_falso(_cliente, slug, **_kwargs):
-        return [_probabilidad("11830")] if slug == "real-madrid" else []
-
     from unittest.mock import patch
 
-    with patch(
-        "fantasy.analytics.servicio.obtener_probabilidades_equipo", side_effect=cliente_falso
-    ):
-        por_id = _scrapear_probabilidades(cliente=None, slugs_equipo=["real-madrid"])
+    from fantasy.analytics.servicio import _scrapear_paginas_de_equipo
+    from fantasy.scrapers.degradacion import PaginaEquipo
+
+    def pagina_falsa(_cliente, slug, _nombre, **_kwargs):
+        return PaginaEquipo([_probabilidad("11830")] if slug == "real-madrid" else [])
+
+    equipo = {"id": "15", "nombre": "Real Madrid", "slug": "real-madrid"}
+    with patch("fantasy.analytics.servicio.obtener_pagina_equipo", side_effect=pagina_falsa):
+        por_id, partidos = _scrapear_paginas_de_equipo(cliente=None, equipos=[equipo])
 
     assert set(por_id) == {"11830"}
+    assert partidos == {}, "sin partido en la página no se inventa ninguno"
 
 
 def test_bug_real_de_cobertura_resuelto():

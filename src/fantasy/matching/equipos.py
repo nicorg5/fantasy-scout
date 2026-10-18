@@ -38,17 +38,6 @@ def equipo_futbolfantasy(equipo_id_oficial: int | str) -> str | None:
     return entrada["id"] if entrada else None
 
 
-def slug_equipo_futbolfantasy(equipo_id_oficial: int | str) -> str | None:
-    """Slug del equipo, necesario para la URL de su página (`/laliga/equipos/malaga`).
-
-    Es distinto del id numérico: la tabla de mercado identifica el equipo con un número
-    y la URL con un slug. Usar el número en la URL devuelve 404 — pasó de verdad.
-    """
-    entrada = cargar_mapa_equipos().get(str(equipo_id_oficial))
-    slug = entrada["slug"] if entrada else None
-    return slug or None
-
-
 def nombre_equipo(equipo_id_oficial: int | str) -> str | None:
     """Nombre legible del equipo ('Málaga'). Sin él, la UI mostraría el id numérico."""
     entrada = cargar_mapa_equipos().get(str(equipo_id_oficial))

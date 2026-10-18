@@ -11,6 +11,8 @@ import pytest
 from sqlalchemy import delete, func, select
 
 from fantasy.analytics.presentacion import BloqueAnalitico, JugadorPresentado
+from fantasy.analytics.servicio import ScrapingCompleto
+from fantasy.scrapers.parsers import PartidoScrapeado
 from fantasy.storage.modelos import EjecucionCron, EstadoAnalitica, Jugador, SnapshotMercado
 
 # El job es un script, no un módulo del paquete: se carga por ruta.
@@ -138,7 +140,7 @@ def test_la_guardia_horaria_solo_afecta_al_snapshot_de_mercado(momento_utc, guar
         with patch.object(snapshot_diario, "ahora_en_madrid", return_value=momento_utc):
             with patch.object(snapshot_diario, "_usuarios_con_credenciales", return_value=["u"]):
                 with patch.object(
-                    snapshot_diario, "scrapear_todo_para_guardar", return_value=([], {})
+                    snapshot_diario, "scrapear_todo_para_guardar", return_value=ScrapingCompleto.vacio()
                 ):
                     with patch.object(snapshot_diario, "_ya_hay_snapshot", return_value=False):
                         with patch.object(
@@ -146,6 +148,7 @@ def test_la_guardia_horaria_solo_afecta_al_snapshot_de_mercado(momento_utc, guar
                         ) as guardar:
                             with patch.object(snapshot_diario, "purgar_snapshots_antiguos", return_value=0):
                                 with patch.object(snapshot_diario, "purgar_analitica_antigua", return_value=0), \
+                                    patch.object(snapshot_diario, "purgar_partidos_antiguos", return_value=0), \
                                     patch.object(snapshot_diario, "purgar_eventos_uso", return_value=0):
                                     snapshot_diario.main()
 
@@ -161,7 +164,7 @@ def test_la_analitica_se_refresca_aunque_el_mercado_no_haya_cerrado():
         with patch.object(snapshot_diario, "ahora_en_madrid", return_value=madrugada):
             with patch.object(snapshot_diario, "_usuarios_con_credenciales", return_value=["u"]):
                 with patch.object(
-                    snapshot_diario, "scrapear_todo_para_guardar", return_value=(["t"], {})
+                    snapshot_diario, "scrapear_todo_para_guardar", return_value=ScrapingCompleto(["t"], {}, {})
                 ):
                     with patch.object(
                         snapshot_diario, "guardar_analitica_del_dia", return_value=669
@@ -170,6 +173,7 @@ def test_la_analitica_se_refresca_aunque_el_mercado_no_haya_cerrado():
                             with patch.object(snapshot_diario, "_guardar_snapshot_de_mercado") as snap:
                                 with patch.object(snapshot_diario, "purgar_snapshots_antiguos", return_value=0):
                                     with patch.object(snapshot_diario, "purgar_analitica_antigua", return_value=0), \
+                                    patch.object(snapshot_diario, "purgar_partidos_antiguos", return_value=0), \
                                     patch.object(snapshot_diario, "purgar_eventos_uso", return_value=0):
                                         snapshot_diario.main()
 
@@ -232,12 +236,14 @@ def _correr_main(*, momento=MOMENTO_FUTURO, argv=("snapshot_diario.py",), **parc
     defecto (un mercado ya guardado, scraping vacio, sin purgas)."""
     por_defecto = {
         "_usuarios_con_credenciales": ["u"],
-        "scrapear_todo_para_guardar": (["t"], {}),
+        "scrapear_todo_para_guardar": ScrapingCompleto(["t"], {}, {}),
         "guardar_analitica_del_dia": 669,
+        "guardar_partidos_del_dia": 0,
         "_ya_hay_snapshot": False,
         "_guardar_snapshot_de_mercado": None,
         "purgar_snapshots_antiguos": 0,
         "purgar_analitica_antigua": 0,
+        "purgar_partidos_antiguos": 0,
         "purgar_eventos_uso": 0,
     }
     por_defecto.update(parches)
@@ -358,3 +364,86 @@ def test_un_resultado_por_defecto_se_anota_como_error(ejecuciones):
         obtener_fabrica_sesiones(), ejecucion_repo.ResultadoEjecucion(iniciado_en=MOMENTO_FUTURO)
     )
     assert ejecuciones()[0].snapshot_resultado == "error"
+
+
+# --- Próximo rival (specs/proximo-rival, T3) ---
+
+_PARTIDO = PartidoScrapeado(
+    rival_nombre="Real Madrid", en_casa=False, jornada=3,
+    capturado_en=datetime(2099, 1, 1, 1, 0, tzinfo=timezone.utc),
+)
+
+
+def test_el_cron_guarda_el_proximo_partido_de_cada_equipo():
+    """P3: los partidos que trae el scraping se guardan con la fecha del día."""
+    guardados = []
+    _correr_main(
+        momento=datetime(2026, 8, 28, 0, 30, tzinfo=timezone.utc),  # 02:30 Madrid
+        scrapear_todo_para_guardar=ScrapingCompleto(["t"], {}, {"11": _PARTIDO}),
+        guardar_partidos_del_dia=lambda sesion, dia, partidos: guardados.append((dia, partidos)) or 1,
+    )
+
+    assert guardados == [(date(2026, 8, 28), {"11": _PARTIDO})]
+
+
+def test_sin_partidos_la_analitica_se_guarda_igual():
+    """P8: si la página de equipo cambia y no hay partidos, la analítica no se pierde."""
+    analitica, partidos = [], []
+    _correr_main(
+        scrapear_todo_para_guardar=ScrapingCompleto(["t"], {}, {}),
+        guardar_analitica_del_dia=lambda *a: analitica.append(a) or 669,
+        guardar_partidos_del_dia=lambda *a: partidos.append(a) or 0,
+    )
+
+    assert len(analitica) == 1
+    assert partidos == [], "sin partidos no se escribe nada: se conserva el último bueno"
+
+
+def test_el_cron_purga_tambien_los_partidos():
+    purgados = []
+    _correr_main(purgar_partidos_antiguos=lambda *a: purgados.append(a) or 0)
+
+    assert len(purgados) == 1
+
+
+def test_scraping_completo_hace_una_peticion_por_equipo(monkeypatch):
+    """P3: el rival no añade peticiones. Una por equipo, igual que antes de que existiera
+    el rival: de cada página salen probabilidad y partido."""
+    from fantasy.analytics import servicio
+    from fantasy.analytics.presentacion import TendenciaValor
+    from fantasy.scrapers.parsers import TendenciaScrapeada
+
+    html_equipo = (
+        Path(__file__).parent / "fixtures" / "scraping_equipo.html"
+    ).read_text(encoding="utf-8")
+    ahora = datetime.now(timezone.utc)
+    sube = TendenciaValor(direccion="sube", variacion_euros=1)
+    tendencias = [
+        TendenciaScrapeada("15344", "Rafa Garrido", "11", sube, ahora),
+        TendenciaScrapeada("10860", "Carlos Dotor", "11", sube, ahora),
+        TendenciaScrapeada("1", "Uno del Madrid", "15", sube, ahora),
+    ]
+
+    class ClienteFalso:
+        def __init__(self):
+            self.urls = []
+
+        def get_html_seguro(self, url, *, ignorar_cache=False):
+            self.urls.append(url)
+            return html_equipo
+
+    cliente = ClienteFalso()
+    # El mercado va parcheado: en `cliente.urls` solo quedan las páginas de equipo.
+    monkeypatch.setattr(servicio, "obtener_tendencias_mercado", lambda c, **k: tendencias)
+    resultado = servicio.scrapear_todo_para_guardar(cliente)
+
+    assert sorted(cliente.urls) == [
+        "https://www.futbolfantasy.com/laliga/equipos/malaga",
+        "https://www.futbolfantasy.com/laliga/equipos/real-madrid",
+    ]
+    assert "15344" in resultado.probabilidades
+    # Los partidos se indexan por id de futbolfantasy del EQUIPO. La fixture sirve para los
+    # dos porque su primer partido es justo Real Madrid - Málaga.
+    assert set(resultado.partidos) == {"11", "15"}
+    assert (resultado.partidos["11"].rival_nombre, resultado.partidos["11"].en_casa) == ("Real Madrid", False)
+    assert (resultado.partidos["15"].rival_nombre, resultado.partidos["15"].en_casa) == ("Málaga", True)

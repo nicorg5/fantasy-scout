@@ -34,7 +34,12 @@ from fantasy.analytics.servicio import (
     recolectar_analitica_de_bd,
     scrapear_todo_para_guardar,
 )
-from fantasy.storage.analitica_repo import guardar_analitica_del_dia, purgar_analitica_antigua
+from fantasy.storage.analitica_repo import (
+    guardar_analitica_del_dia,
+    guardar_partidos_del_dia,
+    purgar_analitica_antigua,
+    purgar_partidos_antiguos,
+)
 from fantasy.storage.ejecucion_repo import ResultadoEjecucion, registrar_ejecucion
 from fantasy.official.cliente import ClienteOficial
 from fantasy.official.errores import ErrorAPIOficial
@@ -170,13 +175,21 @@ def _ejecutar(fabrica, args, ahora, dia: date, resultado: ResultadoEjecucion) ->
         # Es lo unico que consultan las pantallas, y se renueva tras el cambio de valor
         # de las 00:00. Por eso no lleva guardia horaria ni de idempotencia: el guardado
         # es un upsert, asi que ejecutarlo varias veces al dia solo mejora la frescura.
-        tendencias, probabilidades = scrapear_todo_para_guardar()
-        if tendencias:
-            guardados = guardar_analitica_del_dia(sesion, dia, tendencias, probabilidades)
+        scraping = scrapear_todo_para_guardar()
+        if scraping.tendencias:
+            guardados = guardar_analitica_del_dia(
+                sesion, dia, scraping.tendencias, scraping.probabilidades
+            )
             resultado.analitica_guardados = guardados
             logger.info("analitica diaria actualizada: %d jugadores", guardados)
         else:
             logger.warning("scraping caido: la analitica de hoy se queda como estaba")
+        # Proximo rival de cada equipo (specs/proximo-rival). Va aparte: si la pagina de
+        # equipo cambia y no hay partidos, la analitica se guarda igual (P8).
+        if scraping.partidos:
+            guardar_partidos_del_dia(sesion, dia, scraping.partidos)
+        elif scraping.tendencias:
+            logger.warning("sin proximos partidos: el rival de hoy se queda como estaba")
 
         # --- 2. SNAPSHOT DE MERCADO: una vez al dia, tras el cierre ---
         #
@@ -199,13 +212,17 @@ def _ejecutar(fabrica, args, ahora, dia: date, resultado: ResultadoEjecucion) ->
         borrados_analitica = purgar_analitica_antigua(
             sesion, dia, obtener_config().retencion_dias
         )
+        borrados_partidos = purgar_partidos_antiguos(
+            sesion, dia, obtener_config().retencion_dias
+        )
         # Eventos de uso de la web (specs/observabilidad, O21): colgados de este mismo job
         # para no mantener un cron mas, igual que las purgas de arriba.
         borrados_uso = purgar_eventos_uso(sesion)
-        if borrados or borrados_analitica or borrados_uso:
+        if borrados or borrados_analitica or borrados_partidos or borrados_uso:
             logger.info(
-                "purga de retencion: %d snapshots, %d filas de analitica y %d eventos de uso",
-                borrados, borrados_analitica, borrados_uso,
+                "purga de retencion: %d snapshots, %d filas de analitica, %d de proximos "
+                "partidos y %d eventos de uso",
+                borrados, borrados_analitica, borrados_partidos, borrados_uso,
             )
 
 
