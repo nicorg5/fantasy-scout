@@ -14,8 +14,8 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from fantasy.analytics.presentacion import MediaSemanal, ProbabilidadJugar, TendenciaValor
-from fantasy.scrapers.parsers import ProbabilidadScrapeada, TendenciaScrapeada
-from fantasy.storage.modelos import AnaliticaDiaria
+from fantasy.scrapers.parsers import PartidoScrapeado, ProbabilidadScrapeada, TendenciaScrapeada
+from fantasy.storage.modelos import AnaliticaDiaria, ProximoPartido
 
 logger = logging.getLogger("fantasy.storage.analitica_repo")
 
@@ -138,3 +138,84 @@ def a_probabilidad(fila: AnaliticaDiaria) -> ProbabilidadScrapeada | None:
         probabilidad=ProbabilidadJugar(porcentaje=fila.probabilidad_jugar),
         capturado_en=fila.capturado_en,
     )
+
+
+# --- Próximo partido de cada equipo (specs/proximo-rival, D1) ---
+
+
+def guardar_partidos_del_dia(
+    sesion: Session, dia: date, partidos_por_equipo: dict[str, PartidoScrapeado]
+) -> int:
+    """Guarda el próximo partido de cada equipo, indexado por su id de futbolfantasy.
+
+    Idempotente como la analítica: el doble disparo del cron actualiza en vez de duplicar.
+    """
+    if not partidos_por_equipo:
+        logger.warning("sin próximos partidos que guardar para %s", dia)
+        return 0
+
+    filas = [
+        {
+            "fecha": dia,
+            "equipo_externo": equipo,
+            "rival_nombre": p.rival_nombre,
+            "en_casa": p.en_casa,
+            "jornada": p.jornada,
+            "origen": "futbolfantasy.com",
+            "capturado_en": p.capturado_en,
+        }
+        for equipo, p in partidos_por_equipo.items()
+    ]
+    orden = insert(ProximoPartido).values(filas)
+    orden = orden.on_conflict_do_update(
+        constraint="uq_proximo_partido_fecha_equipo",
+        set_={c: orden.excluded[c] for c in ("rival_nombre", "en_casa", "jornada", "capturado_en")},
+    )
+    sesion.execute(orden)
+    sesion.commit()
+    logger.info("próximos partidos guardados: %d equipos para %s", len(filas), dia)
+    return len(filas)
+
+
+def leer_partidos_mas_recientes(
+    sesion: Session, hoy: date
+) -> tuple[date | None, dict[str, PartidoScrapeado]]:
+    """Devuelve (fecha del dato, partidos por id de equipo de futbolfantasy) del día más
+    reciente dentro de `MAX_ANTIGUEDAD_DIAS`.
+
+    Va aparte de `leer_analitica_mas_reciente` a propósito: si un día el cron guarda
+    tendencias pero no partidos (o al revés), cada dato se sirve con su propia fecha en
+    vez de arrastrar al otro (P8).
+    """
+    corte = hoy - timedelta(days=MAX_ANTIGUEDAD_DIAS)
+    fecha = sesion.scalar(
+        select(ProximoPartido.fecha)
+        .where(ProximoPartido.fecha >= corte)
+        .order_by(ProximoPartido.fecha.desc())
+        .limit(1)
+    )
+    if fecha is None:
+        logger.info("no hay próximos partidos de los últimos %d días", MAX_ANTIGUEDAD_DIAS)
+        return None, {}
+
+    filas = sesion.scalars(select(ProximoPartido).where(ProximoPartido.fecha == fecha))
+    # Se reconstruye el tipo del scraper, como `a_tendencia`: el resto del código no
+    # necesita saber si el partido viene de la red o de la base.
+    return fecha, {
+        f.equipo_externo: PartidoScrapeado(
+            rival_nombre=f.rival_nombre,
+            en_casa=f.en_casa,
+            jornada=f.jornada,
+            capturado_en=f.capturado_en,
+        )
+        for f in filas
+    }
+
+
+def purgar_partidos_antiguos(sesion: Session, hoy: date, retencion_dias: int) -> int:
+    corte = hoy - timedelta(days=retencion_dias)
+    borrados = sesion.execute(
+        delete(ProximoPartido).where(ProximoPartido.fecha < corte)
+    ).rowcount or 0
+    sesion.commit()
+    return borrados

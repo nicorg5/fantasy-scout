@@ -8,15 +8,18 @@ import pytest
 from sqlalchemy import delete, select
 
 from fantasy.analytics.presentacion import MediaSemanal, ProbabilidadJugar, TendenciaValor
-from fantasy.scrapers.parsers import ProbabilidadScrapeada, TendenciaScrapeada
+from fantasy.scrapers.parsers import PartidoScrapeado, ProbabilidadScrapeada, TendenciaScrapeada
 from fantasy.storage.analitica_repo import (
     a_probabilidad,
     a_tendencia,
     guardar_analitica_del_dia,
+    guardar_partidos_del_dia,
     leer_analitica_mas_reciente,
+    leer_partidos_mas_recientes,
     purgar_analitica_antigua,
+    purgar_partidos_antiguos,
 )
-from fantasy.storage.modelos import AnaliticaDiaria
+from fantasy.storage.modelos import AnaliticaDiaria, ProximoPartido
 
 DIA = date(2099, 1, 1)   # fecha imposible: los tests no pueden pisar datos reales
 AHORA = datetime.now(timezone.utc)
@@ -130,3 +133,81 @@ def test_purga_respeta_la_retencion(sesion_db):
         select(AnaliticaDiaria).where(AnaliticaDiaria.fecha == antigua)
     )
     assert quedan is None
+
+
+# --- Próximo partido (specs/proximo-rival, T2) ---
+
+
+@pytest.fixture
+def sin_partidos(sesion_db):
+    def _borrar():
+        sesion_db.execute(delete(ProximoPartido).where(ProximoPartido.fecha >= date(2099, 1, 1)))
+        sesion_db.commit()
+    _borrar()
+    yield sesion_db
+    _borrar()
+
+
+def _partido(rival="Real Madrid", en_casa=False, jornada=3):
+    return PartidoScrapeado(rival_nombre=rival, en_casa=en_casa, jornada=jornada, capturado_en=AHORA)
+
+
+def test_partidos_se_guardan_y_se_leen_por_equipo(sin_partidos):
+    n = guardar_partidos_del_dia(
+        sin_partidos, DIA, {"11": _partido(), "15": _partido("Málaga", en_casa=True)}
+    )
+
+    assert n == 2
+    fecha, partidos = leer_partidos_mas_recientes(sin_partidos, DIA)
+    assert fecha == DIA
+    assert partidos["11"].rival_nombre == "Real Madrid"
+    assert partidos["11"].en_casa is False
+    assert partidos["11"].jornada == 3
+    assert partidos["15"].en_casa is True
+
+
+def test_partidos_reejecutar_el_mismo_dia_actualiza_en_vez_de_duplicar(sin_partidos):
+    """El cron dispara dos veces al día: una fila por equipo y día, con el último dato."""
+    guardar_partidos_del_dia(sin_partidos, DIA, {"11": _partido()})
+    guardar_partidos_del_dia(sin_partidos, DIA, {"11": _partido("Levante", en_casa=True, jornada=4)})
+
+    filas = list(sin_partidos.scalars(select(ProximoPartido).where(ProximoPartido.fecha == DIA)))
+    assert len(filas) == 1
+    assert (filas[0].rival_nombre, filas[0].en_casa, filas[0].jornada) == ("Levante", True, 4)
+
+
+def test_partidos_sin_nada_que_guardar_no_toca_la_base(sin_partidos):
+    assert guardar_partidos_del_dia(sin_partidos, DIA, {}) == 0
+    assert leer_partidos_mas_recientes(sin_partidos, DIA) == (None, {})
+
+
+def test_partidos_demasiado_viejos_no_se_sirven(sin_partidos):
+    """Un rival de hace días puede ser el de un partido ya jugado: mejor "sin dato"."""
+    guardar_partidos_del_dia(sin_partidos, DIA, {"11": _partido()})
+
+    assert leer_partidos_mas_recientes(sin_partidos, DIA + timedelta(days=4)) == (None, {})
+    fecha, _ = leer_partidos_mas_recientes(sin_partidos, DIA + timedelta(days=3))
+    assert fecha == DIA
+
+
+def test_partidos_se_sirve_el_dia_mas_reciente(sin_partidos):
+    guardar_partidos_del_dia(sin_partidos, DIA, {"11": _partido()})
+    guardar_partidos_del_dia(sin_partidos, DIA + timedelta(days=1), {"11": _partido("Levante")})
+
+    fecha, partidos = leer_partidos_mas_recientes(sin_partidos, DIA + timedelta(days=1))
+    assert fecha == DIA + timedelta(days=1)
+    assert partidos["11"].rival_nombre == "Levante"
+
+
+def test_purga_de_partidos_respeta_la_retencion(sesion_db):
+    """Misma precaución que la purga de analítica: fecha ANTIGUA y corte justo encima,
+    para que el borrado no pueda alcanzar datos reales."""
+    antigua = date(1999, 1, 1)
+    sesion_db.execute(delete(ProximoPartido).where(ProximoPartido.fecha == antigua))
+    sesion_db.commit()
+    guardar_partidos_del_dia(sesion_db, antigua, {"11": _partido()})
+
+    borrados = purgar_partidos_antiguos(sesion_db, date(1999, 1, 2), retencion_dias=0)
+
+    assert borrados == 1
+    assert sesion_db.scalar(select(ProximoPartido).where(ProximoPartido.fecha == antigua)) is None

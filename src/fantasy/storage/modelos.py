@@ -10,6 +10,7 @@ import uuid
 from datetime import date, datetime
 
 from sqlalchemy import (
+    Boolean,
     Date,
     DateTime,
     Enum,
@@ -331,6 +332,36 @@ class AnaliticaDiaria(Base):
     media_acumulada_euros: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Puede faltar: futbolfantasy solo publica probabilidad del once probable.
     probabilidad_jugar: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    origen: Mapped[str] = mapped_column(String(64), nullable=False)
+    capturado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ProximoPartido(Base):
+    """Próximo partido de LaLiga de cada equipo, un registro por equipo y día.
+
+    Es un dato del EQUIPO, no del jugador: por eso no va en `analitica_diaria`, donde se
+    repetiría en cada fila de la plantilla y quedaría atado al emparejamiento de
+    jugadores. Al servir se cruza con el jugador oficial por el mapa de equipos
+    (`data/mappings/equipos.json`), que es exacto: así un jugador sin emparejar con
+    futbolfantasy también tiene rival. Ver specs/proximo-rival/design.md §D1.
+
+    Mismo ciclo de vida que `analitica_diaria`: la rellena el cron y la web solo lee.
+    """
+
+    __tablename__ = "proximo_partido"
+    __table_args__ = (
+        UniqueConstraint("fecha", "equipo_externo", name="uq_proximo_partido_fecha_equipo"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    fecha: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    # Id numérico del equipo en futbolfantasy ("11" es el Málaga), el mismo que
+    # `analitica_diaria.equipo_externo`. No es el id oficial: esos no coinciden.
+    equipo_externo: Mapped[str] = mapped_column(String(16), nullable=False)
+    rival_nombre: Mapped[str] = mapped_column(String(64), nullable=False)
+    en_casa: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    jornada: Mapped[int] = mapped_column(Integer, nullable=False)
 
     origen: Mapped[str] = mapped_column(String(64), nullable=False)
     capturado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
