@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
@@ -168,6 +168,68 @@ def test_obtener_plantilla_en_vivo_scrapea_al_momento():
 
     en_vivo.assert_called_once()
     en_bd.assert_not_called()
+
+
+# --- Protección de la cláusula (specs/clausula-plantilla, T3) ---
+
+def _plantilla_con(*jugadores: JugadorPlantilla) -> Plantilla:
+    return Plantilla(jugadores=list(jugadores), dinero=0, valor_equipo=0, puntos=0)
+
+
+def test_cada_jugador_de_la_plantilla_sale_con_su_proteccion():
+    """C2: en /plantilla la protección nunca es None, siempre uno de los tres estados."""
+    cliente = _cliente_oficial_falso(plantilla=_plantilla_con(
+        JugadorPlantilla(
+            jugador=OFICIALES[0], clausula=1, blindado=False,
+            bloqueada_hasta=AHORA + timedelta(hours=23),
+        ),
+        JugadorPlantilla(jugador=OFICIALES[1], clausula=1, blindado=False, bloqueada_hasta=None),
+    ))
+
+    with (
+        patch("fantasy.analytics.servicio.ClienteOficial", return_value=cliente),
+        patch("fantasy.analytics.servicio.recolectar_analitica_de_bd", return_value=Analitica.vacia()),
+    ):
+        presentados = obtener_plantilla(sesion=None, usuario_id=None, ahora=AHORA)
+
+    protecciones = {p.id_oficial: p.proteccion_clausula for p in presentados}
+    assert protecciones["1"].estado == "protegido"
+    assert protecciones["1"].segundos_restantes == pytest.approx(23 * 3600)
+    assert protecciones["2"].estado == "clausulable"
+
+
+def test_la_proteccion_se_calcula_con_la_hora_de_la_peticion():
+    """Sin `ahora` explícito se usa la hora real: un bloqueo de dentro de 2 h sale protegido."""
+    cliente = _cliente_oficial_falso(plantilla=_plantilla_con(
+        JugadorPlantilla(
+            jugador=OFICIALES[0], clausula=1, blindado=False,
+            bloqueada_hasta=datetime.now(timezone.utc) + timedelta(hours=2),
+        ),
+    ))
+
+    with (
+        patch("fantasy.analytics.servicio.ClienteOficial", return_value=cliente),
+        patch("fantasy.analytics.servicio.recolectar_analitica_de_bd", return_value=Analitica.vacia()),
+    ):
+        [presentado] = obtener_plantilla(sesion=None, usuario_id=None)
+
+    assert presentado.proteccion_clausula.estado == "protegido"
+
+
+def test_el_mercado_no_lleva_proteccion_de_clausula():
+    """C6: None aquí es "esta pantalla no tiene la columna", no "sin dato"."""
+    subasta = SubastaMercado(
+        id="1", jugador=OFICIALES[0], precio_venta=1, expira_en=AHORA, numero_pujas=0
+    )
+    cliente = _cliente_oficial_falso(mercado=[subasta])
+
+    with (
+        patch("fantasy.analytics.servicio.ClienteOficial", return_value=cliente),
+        patch("fantasy.analytics.servicio.recolectar_analitica_de_bd", return_value=Analitica.vacia()),
+    ):
+        [presentado] = obtener_mercado(sesion=None, usuario_id=None)
+
+    assert presentado.proteccion_clausula is None
 
 
 # --- Próximo rival (specs/proximo-rival, T5) ---

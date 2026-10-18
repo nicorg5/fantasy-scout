@@ -17,6 +17,7 @@ from fantasy.analytics.presentacion import (
     BloqueAnalitico,
     JugadorPresentado,
     ProbabilidadJugar,
+    ProteccionClausula,
     ProximoPartido,
     ProximoRival,
     TendenciaValor,
@@ -39,7 +40,10 @@ def _rival(rival: str | None = "Real Madrid", en_casa: bool = False) -> ProximoR
 
 
 def _jugador(
-    nombre: str = "Abel Bretones", con_analitica: bool = True, rival: ProximoRival | None = None
+    nombre: str = "Abel Bretones",
+    con_analitica: bool = True,
+    rival: ProximoRival | None = None,
+    proteccion: ProteccionClausula | None = None,
 ) -> JugadorPresentado:
     if con_analitica:
         analitica = BloqueAnalitico.desde_scraping(
@@ -55,6 +59,7 @@ def _jugador(
         id_oficial="1", nombre=nombre, equipo="12", posicion="Defensa",
         valor_mercado_euros=5_000_000, analitica=analitica,
         proximo_rival=rival or _rival(),
+        proteccion_clausula=proteccion,
     )
 
 
@@ -348,3 +353,4 @@ def test_actualizar_datos_trae_el_rival_nuevo(cliente_autenticado, ruta, destino
 
     assert obtener.call_args.kwargs.get("en_vivo") is True
     assert "vs Levante" in _celda_rival(html, "Abel Bretones").get_text()
+

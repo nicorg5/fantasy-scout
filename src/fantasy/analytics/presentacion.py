@@ -207,6 +207,10 @@ class JugadorPresentado:
     # Obligatorio a propósito: con un valor por defecto, una pantalla que olvidara
     # rellenarlo enseñaría "sin dato" sin que nada fallara.
     proximo_rival: ProximoRival
+    # Obligatorio por lo mismo. None NO es "sin dato": es "esta pantalla no tiene la
+    # columna" (/mercado, donde un jugador libre no tiene cláusula). En /plantilla siempre
+    # lleva uno de los tres estados (specs/clausula-plantilla, D4).
+    proteccion_clausula: ProteccionClausula | None
     origen_valor: str = ORIGEN_OFICIAL
 
 
@@ -279,6 +283,80 @@ def formatear_euros(cantidad: int) -> str:
     return f"{cantidad:,}".replace(",", ".") + " €"
 
 
+def formatear_espera(segundos: float) -> str:
+    """'2d 5h', '3h 20m' o '15m'. Un número de segundos no dice nada de un vistazo.
+
+    Una sola función para Clausulazos y Mi plantilla (specs/clausula-plantilla, C3): el
+    mismo tiempo no puede leerse distinto en dos pantallas.
+    """
+    total = int(segundos)
+    dias, resto = divmod(total, 86400)
+    horas, resto = divmod(resto, 3600)
+    minutos = resto // 60
+    if dias:
+        return f"{dias}d {horas}h"
+    if horas:
+        return f"{horas}h {minutos}m"
+    return f"{minutos}m"
+
+
+EstadoClausula = Literal["protegido", "clausulable", "blindado"]
+AvisoClausula = Literal["clausulable", "pronto"]
+
+UMBRAL_AVISO_SEGUNDOS = 24 * 3600
+"""Por debajo de esto, un jugador protegido se resalta como "menos de 24 h"."""
+
+
+@dataclass(frozen=True)
+class ProteccionClausula:
+    """Cuánto le queda a un jugador propio hasta que otro manager pueda clausularlo.
+
+    Dato oficial (`buyoutClauseLockedEndTime` e `isShielded`). Las reglas viven aquí y no
+    en la plantilla (specs/clausula-plantilla, D2): un estado incoherente, como
+    "protegido" sin tiempo, no se puede construir.
+    """
+
+    estado: EstadoClausula
+    # Solo en "protegido", y siempre > 0: con 0 s ya es clausulable.
+    segundos_restantes: float | None = None
+
+    def __post_init__(self) -> None:
+        if self.estado == "protegido":
+            if self.segundos_restantes is None or self.segundos_restantes <= 0:
+                raise ValueError("un jugador protegido necesita un tiempo restante positivo")
+        elif self.estado in ("clausulable", "blindado"):
+            if self.segundos_restantes is not None:
+                raise ValueError(f"un jugador {self.estado} no lleva tiempo restante")
+        else:
+            raise ValueError(f"estado de cláusula desconocido: {self.estado!r}")
+
+    @classmethod
+    def desde_bloqueo(
+        cls, bloqueada_hasta: datetime | None, blindado: bool, ahora: datetime
+    ) -> ProteccionClausula:
+        """El blindaje manda sobre la fecha; sin fecha, o ya vencida, es clausulable."""
+        if blindado:
+            return cls(estado="blindado")
+        if bloqueada_hasta is None or bloqueada_hasta <= ahora:
+            return cls(estado="clausulable")
+        return cls(estado="protegido", segundos_restantes=(bloqueada_hasta - ahora).total_seconds())
+
+    @property
+    def legible(self) -> str:
+        if self.estado == "protegido":
+            return f"protegido · {formatear_espera(self.segundos_restantes)}"
+        return self.estado
+
+    @property
+    def aviso(self) -> AvisoClausula | None:
+        """Qué resaltar. El blindado no: nadie puede llevárselo."""
+        if self.estado == "clausulable":
+            return "clausulable"
+        if self.estado == "protegido" and self.segundos_restantes < UMBRAL_AVISO_SEGUNDOS:
+            return "pronto"
+        return None
+
+
 @dataclass(frozen=True)
 class ClausulaPresentada:
     """Una fila de la pantalla de clausulazos.
@@ -313,16 +391,7 @@ class ClausulaPresentada:
             return "blindado"
         if self.segundos_para_desbloqueo is None:
             return "disponible"
-
-        total = int(self.segundos_para_desbloqueo)
-        dias, resto = divmod(total, 86400)
-        horas, resto = divmod(resto, 3600)
-        minutos = resto // 60
-        if dias:
-            return f"{dias}d {horas}h"
-        if horas:
-            return f"{horas}h {minutos}m"
-        return f"{minutos}m"
+        return formatear_espera(self.segundos_para_desbloqueo)
 
     @property
     def origen_valor(self) -> str:

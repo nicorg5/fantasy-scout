@@ -87,6 +87,7 @@ def _presentado(con_analitica: bool) -> JugadorPresentado:
         id_oficial="test-snap-1", nombre="Snapshot", equipo="Málaga", posicion="Defensa",
         valor_mercado_euros=1_000_000, analitica=bloque,
         proximo_rival=ProximoRival.sin_dato("sin datos"),
+        proteccion_clausula=None,
     )
 
 

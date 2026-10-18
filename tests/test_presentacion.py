@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -11,8 +11,10 @@ from fantasy.analytics.presentacion import (
     JugadorPresentado,
     ProbabilidadJugar,
     ProximoPartido,
+    ProteccionClausula,
     ProximoRival,
     TendenciaValor,
+    formatear_espera,
     formatear_euros,
 )
 
@@ -26,6 +28,7 @@ def _jugador(analitica: BloqueAnalitico) -> JugadorPresentado:
         valor_mercado_euros=1_000_000,
         analitica=analitica,
         proximo_rival=ProximoRival.sin_dato("sin datos"),
+        proteccion_clausula=None,
     )
 
 
@@ -123,6 +126,7 @@ def _presentado(direccion: str, euros: int, con_analitica: bool = True):
         id_oficial="x", nombre="X", equipo="Málaga", posicion="Defensa",
         valor_mercado_euros=1_000_000, analitica=bloque,
         proximo_rival=ProximoRival.sin_dato("sin datos"),
+        proteccion_clausula=None,
     )
 
 
@@ -203,3 +207,71 @@ def test_proximo_rival_con_partido_o_sin_dato():
 def test_lado_del_partido_es_texto_legible():
     assert _partido_presentado(en_casa=True).lado == "Casa"
     assert _partido_presentado(en_casa=False).lado == "Fuera"
+
+
+# --- protección de la cláusula (specs/clausula-plantilla, C3–C5) ---
+
+AHORA = datetime(2026, 10, 18, 12, 0, tzinfo=timezone.utc)
+
+
+@pytest.mark.parametrize(
+    "segundos, esperado",
+    [
+        (2 * 86400 + 5 * 3600 + 59, "2d 5h"),
+        (3 * 3600 + 20 * 60 + 5, "3h 20m"),
+        (15 * 60 + 30, "15m"),
+    ],
+)
+def test_formatear_espera(segundos, esperado):
+    assert formatear_espera(segundos) == esperado
+
+
+@pytest.mark.parametrize(
+    "bloqueada_hasta, blindado, estado, aviso",
+    [
+        (AHORA + timedelta(days=3), True, "blindado", None),
+        (None, True, "blindado", None),
+        (None, False, "clausulable", "clausulable"),
+        (AHORA - timedelta(minutes=1), False, "clausulable", "clausulable"),
+        (AHORA, False, "clausulable", "clausulable"),
+        (AHORA + timedelta(hours=23), False, "protegido", "pronto"),
+        (AHORA + timedelta(hours=25), False, "protegido", None),
+    ],
+)
+def test_proteccion_desde_bloqueo(bloqueada_hasta, blindado, estado, aviso):
+    proteccion = ProteccionClausula.desde_bloqueo(bloqueada_hasta, blindado, AHORA)
+
+    assert proteccion.estado == estado
+    assert proteccion.aviso == aviso
+
+
+def test_el_umbral_de_aviso_es_estricto():
+    """Justo 24 h ya no es "menos de 24 h"."""
+    proteccion = ProteccionClausula.desde_bloqueo(AHORA + timedelta(hours=24), False, AHORA)
+
+    assert proteccion.aviso is None
+
+
+def test_proteccion_legible():
+    protegido = ProteccionClausula.desde_bloqueo(
+        AHORA + timedelta(days=2, hours=5), False, AHORA
+    )
+    assert protegido.legible == "protegido · 2d 5h"
+    assert ProteccionClausula.desde_bloqueo(None, False, AHORA).legible == "clausulable"
+    assert ProteccionClausula.desde_bloqueo(None, True, AHORA).legible == "blindado"
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"estado": "protegido"},
+        {"estado": "protegido", "segundos_restantes": 0},
+        {"estado": "protegido", "segundos_restantes": -5},
+        {"estado": "clausulable", "segundos_restantes": 60},
+        {"estado": "blindado", "segundos_restantes": 60},
+        {"estado": "caducado"},
+    ],
+)
+def test_proteccion_incoherente_no_se_puede_construir(kwargs):
+    with pytest.raises(ValueError):
+        ProteccionClausula(**kwargs)

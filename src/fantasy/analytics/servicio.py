@@ -15,11 +15,11 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from fantasy.analytics.presentacion import BloqueAnalitico, JugadorPresentado
+from fantasy.analytics.presentacion import BloqueAnalitico, JugadorPresentado, ProteccionClausula
 from fantasy.matching.analitica import construir_bloque_analitico, construir_proximo_rival
 from fantasy.matching.emparejador import CandidatoExterno, Emparejamiento, emparejar
 from fantasy.matching.equipos import cargar_mapa_equipos, nombre_equipo
@@ -197,8 +197,17 @@ def _scrapear_paginas_de_equipo(
     return probabilidades, partidos
 
 
-def componer(oficiales: list[JugadorOficial], analitica: Analitica) -> list[JugadorPresentado]:
-    """Une el bloque oficial con el analítico, jugador a jugador."""
+def componer(
+    oficiales: list[JugadorOficial],
+    analitica: Analitica,
+    protecciones: dict[str, ProteccionClausula] | None = None,
+) -> list[JugadorPresentado]:
+    """Une el bloque oficial con el analítico, jugador a jugador.
+
+    `protecciones` (por id oficial) solo lo pasa la plantilla propia: sin él, cada
+    jugador sale sin columna de cláusula (specs/clausula-plantilla, D4).
+    """
+    protecciones = protecciones or {}
     presentados = []
     for oficial in oficiales:
         if analitica.hay_datos:
@@ -225,6 +234,7 @@ def componer(oficiales: list[JugadorOficial], analitica: Analitica) -> list[Juga
                 proximo_rival=construir_proximo_rival(
                     oficial.equipo_id, analitica.partidos, posicion=oficial.posicion
                 ),
+                proteccion_clausula=protecciones.get(oficial.id),
             )
         )
     return presentados
@@ -266,8 +276,10 @@ def obtener_mercado(
 
 
 def obtener_plantilla(
-    sesion: Session, usuario_id: uuid.UUID, en_vivo: bool = False
+    sesion: Session, usuario_id: uuid.UUID, en_vivo: bool = False, ahora: datetime | None = None
 ) -> list[JugadorPresentado]:
+    """Plantilla propia enriquecida, con lo que le queda a cada jugador hasta poder ser
+    clausulado. `ahora` solo lo fijan los tests; si no, la hora de la petición."""
     cliente = ClienteOficial(sesion, usuario_id)
     league_id, team_id = cliente.obtener_liga_y_equipo()
     plantilla = cliente.obtener_plantilla(league_id, team_id)
@@ -277,7 +289,12 @@ def obtener_plantilla(
         if en_vivo
         else recolectar_analitica_de_bd(sesion, oficiales)
     )
-    return componer(oficiales, analitica)
+    ahora = ahora or datetime.now(timezone.utc)
+    protecciones = {
+        j.jugador.id: ProteccionClausula.desde_bloqueo(j.bloqueada_hasta, j.blindado, ahora)
+        for j in plantilla.jugadores
+    }
+    return componer(oficiales, analitica, protecciones)
 
 
 @dataclass(frozen=True)
