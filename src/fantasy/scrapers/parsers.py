@@ -1,4 +1,4 @@
-"""Parsers de futbolfantasy.com: tendencia de valor y probabilidad de jugar.
+"""Parsers de futbolfantasy.com: tendencia de valor, probabilidad de jugar y próximo rival.
 
 Estructura verificada contra HTML real el 2026-08-27 (ver design.md §Fuente 2 y
 `data/raw/scraping/`). Ambos datos vienen como **atributos `data-*` estructurados**, no
@@ -55,6 +55,21 @@ class ProbabilidadScrapeada:
     id_futbolfantasy: str
     slug: str
     probabilidad: ProbabilidadJugar
+    capturado_en: datetime
+
+
+@dataclass(frozen=True)
+class PartidoScrapeado:
+    """Próximo partido de LaLiga de un equipo, tal y como lo publica su página.
+
+    Es un dato del EQUIPO, no del jugador: todos los de una plantilla comparten rival.
+    Por eso no lleva id de jugador; quien lo guarda lo indexa por el id del equipo en
+    futbolfantasy (ver specs/proximo-rival/design.md §D1).
+    """
+
+    rival_nombre: str
+    en_casa: bool
+    jornada: int
     capturado_en: datetime
 
 
@@ -186,3 +201,79 @@ def parsear_probabilidad_equipo(html: str) -> list[ProbabilidadScrapeada]:
         "parsear_probabilidad_equipo: %d/%d bloques parseados", len(resultados), len(bloques)
     )
     return resultados
+
+
+
+# El sitio mezcla competiciones en «Próximos partidos»: solo cuenta la liga.
+_COMPETICION_LIGA = "LaLiga"
+_FASE_JORNADA = re.compile(r"Jornada\s+(\d+)")
+
+
+def parsear_proximo_partido(html: str, nombre_equipo: str) -> PartidoScrapeado | None:
+    """Página `/laliga/equipos/{slug}`: la sección «Próximos partidos»
+    (`section.lista.partidos.proximos`) lista los siguientes partidos del equipo, de
+    todas las competiciones, cada uno en un `a.partido` con el escudo local y visitante
+    (`alt` = nombre del equipo), el logo de la competición y la fase ("Jornada 10").
+    Verificado con datos reales (2026-08-27 y 2026-10-18).
+
+    Se descartó el selector de alineaciones (`option[selected]`), que tiene atributos
+    `data-*` más limpios: marca la jornada del once probable y, entre el final de una
+    jornada y la publicación del once siguiente, sigue señalando el partido ya jugado
+    (comprobado el 2026-10-18). Ver specs/proximo-rival/design.md §D3.
+
+    Se queda con el PRIMER partido de LaLiga; Copa y amistosos se saltan. Si ese partido
+    viene mal formado se devuelve None en vez de pasar al siguiente: enseñaríamos un
+    rival que no es el próximo.
+
+    `nombre_equipo` es el `nombre` de `data/mappings/equipos.json`, que sale del propio
+    sitio: se compara con los escudos para saber si el equipo juega en casa. Si no
+    coincide con ninguno, None: ante la duda no se empareja (mismo criterio que el
+    matching de jugadores).
+
+    Misma regla de degradación que el resto: None con aviso en el log, nunca una
+    excepción.
+    """
+    ahora = datetime.now(timezone.utc)
+    soup = BeautifulSoup(html, "html.parser")
+    partidos = soup.select("section.lista.partidos.proximos a.partido")
+    if not partidos:
+        logger.warning("parsear_proximo_partido: sin «Próximos partidos»; ¿cambió el sitio?")
+        return None
+
+    for partido in partidos:
+        logo = partido.select_one(".logo img")
+        fase = partido.select_one(".fase")
+        jornada = _FASE_JORNADA.fullmatch(fase.get_text(strip=True)) if fase else None
+        # Las dos condiciones a la vez: un cambio de rotulación no debe colar la Copa.
+        if logo is None or logo.get("alt") != _COMPETICION_LIGA or jornada is None:
+            continue
+        return _partido_de_liga(partido, int(jornada.group(1)), nombre_equipo, ahora)
+
+    logger.info("parsear_proximo_partido: %s no tiene partidos de liga próximos", nombre_equipo)
+    return None
+
+
+def _partido_de_liga(
+    partido, jornada: int, nombre_equipo: str, ahora: datetime
+) -> PartidoScrapeado | None:
+    escudo_local = partido.select_one(".equipo.local img")
+    escudo_visitante = partido.select_one(".equipo.visitante img")
+    local = (escudo_local.get("alt") or "").strip() if escudo_local else ""
+    visitante = (escudo_visitante.get("alt") or "").strip() if escudo_visitante else ""
+
+    if nombre_equipo == local:
+        en_casa, rival = True, visitante
+    elif nombre_equipo == visitante:
+        en_casa, rival = False, local
+    else:
+        logger.warning(
+            "parsear_proximo_partido: '%s' no es ni local ('%s') ni visitante ('%s')",
+            nombre_equipo, local, visitante,
+        )
+        return None
+
+    if not rival:
+        logger.warning("parsear_proximo_partido: rival vacío para %s", nombre_equipo)
+        return None
+
+    return PartidoScrapeado(rival_nombre=rival, en_casa=en_casa, jornada=jornada, capturado_en=ahora)

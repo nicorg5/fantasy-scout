@@ -11,7 +11,13 @@ from pathlib import Path
 
 import pytest
 
-from fantasy.scrapers.parsers import parsear_probabilidad_equipo, parsear_tendencias_mercado
+import logging
+
+from fantasy.scrapers.parsers import (
+    parsear_probabilidad_equipo,
+    parsear_proximo_partido,
+    parsear_tendencias_mercado,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -143,3 +149,114 @@ def test_media_semanal_ausente_no_rompe_la_fila():
     assert len(resultado) == 1
     assert resultado[0].media_semanal is None
     assert resultado[0].tendencia is not None, "la tendencia diaria sí está y debe servirse"
+
+
+# --- Próximo rival (specs/proximo-rival, P1/P2) ---
+
+
+def _partido(local="Málaga", visitante="Sevilla", fase="Jornada 4", competicion="LaLiga") -> str:
+    """Un `a.partido` con el mismo marcado que la sección real «Próximos partidos»."""
+    return f"""
+    <a class="ptheight partido nodeco" href="#">
+      <div class="logo rslogo rsinfo"><img alt="{competicion}"/></div>
+      <div class="equipo local"><img alt="{local}"/></div>
+      <div class="info rsinfo"><div class="fase"> {fase} </div><div class="date"> Sab 24/10 </div></div>
+      <div class="equipo visitante"><img alt="{visitante}"/></div>
+    </a>"""
+
+
+def _pagina(*partidos: str) -> str:
+    return (
+        '<section class="mod lista partidos proximos block-new">'
+        + "".join(partidos)
+        + "</section>"
+    )
+
+
+def test_proximo_partido_fuera_con_la_pagina_real(html_equipo):
+    """P1: captura real del Málaga (2026-08-27), jornada 3 en el Bernabéu."""
+    partido = parsear_proximo_partido(html_equipo, "Málaga")
+
+    assert partido is not None
+    assert partido.rival_nombre == "Real Madrid"
+    assert partido.en_casa is False
+    assert partido.jornada == 3
+    assert partido.capturado_en is not None
+
+
+def test_proximo_partido_en_casa():
+    """El caso en casa se verificó con la página en vivo del 2026-10-18 (Málaga - Racing)."""
+    partido = parsear_proximo_partido(_pagina(_partido(visitante="Racing", fase="Jornada 12")), "Málaga")
+
+    assert partido is not None
+    assert partido.en_casa is True
+    assert partido.rival_nombre == "Racing"
+    assert partido.jornada == 12
+
+
+def test_la_copa_se_salta_y_cuenta_el_siguiente_de_liga():
+    """Supuesto 6: solo LaLiga. Así venía la página en vivo del 2026-10-18."""
+    html = _pagina(
+        _partido(local="Sp. Alcázar", visitante="Málaga", fase="Ronda 1", competicion="Copa del Rey"),
+        _partido(local="Betis", visitante="Málaga", fase="Jornada 11"),
+    )
+    partido = parsear_proximo_partido(html, "Málaga")
+
+    assert partido is not None
+    assert partido.rival_nombre == "Betis"
+    assert partido.jornada == 11
+
+
+def test_hace_falta_logo_de_liga_y_fase_de_jornada_a_la_vez():
+    """Un partido rotulado "Jornada" pero con logo de Copa (o al revés) no es de liga."""
+    html = _pagina(
+        _partido(local="Copa A", fase="Jornada 1", competicion="Copa del Rey"),
+        _partido(local="Copa B", fase="Ronda 1"),
+        _partido(local="Betis", visitante="Málaga", fase="Jornada 11"),
+    )
+    assert parsear_proximo_partido(html, "Málaga").rival_nombre == "Betis"
+
+
+def test_la_misma_pagina_no_sirve_para_otro_equipo(html_equipo):
+    """La página es del Málaga: con otro nombre no hay forma segura de decidir."""
+    assert parsear_proximo_partido(html_equipo, "Sevilla") is None
+
+
+@pytest.mark.parametrize(
+    "html",
+    [
+        "<html><body>nada que ver aquí</body></html>",
+        _pagina(),
+        _pagina(_partido(fase="Ronda 1", competicion="Copa del Rey")),
+        _pagina(_partido(visitante="")),
+        # El primer partido de liga viene roto: no se salta al siguiente, que no es el próximo.
+        _pagina(
+            _partido().replace('<div class="equipo local"><img alt="Málaga"/></div>', ""),
+            _partido(local="Betis", visitante="Málaga", fase="Jornada 5"),
+        ),
+    ],
+    ids=["sin-seccion", "seccion-vacia", "solo-copa", "rival-vacio", "liga-mal-formado"],
+)
+def test_proximo_partido_raro_devuelve_none_sin_lanzar(html, caplog):
+    """P2: cualquier forma inesperada es "sin dato", nunca una excepción ni un rival
+    inventado."""
+    with caplog.at_level(logging.INFO, logger="fantasy.scrapers.parsers"):
+        assert parsear_proximo_partido(html, "Málaga") is None
+    assert caplog.records, "el descarte tiene que quedar en el log"
+
+
+def test_los_nombres_del_mapa_son_los_del_sitio(html_equipo):
+    """Casa o fuera se decide comparando el `nombre` del mapa con el `alt` de los escudos.
+    Si algún nombre del mapa no es el que usa el sitio, ese equipo se quedaría siempre sin
+    rival. La fixture lleva la lista de equipos del menú del sitio, que usa los mismos
+    nombres cortos ("Rayo", "Atlético") que los escudos."""
+    from bs4 import BeautifulSoup
+
+    from fantasy.matching.equipos import cargar_mapa_equipos
+
+    soup = BeautifulSoup(html_equipo, "html.parser")
+    del_sitio = {a["title"] for a in soup.select("a.team[title]")}
+
+    nombres_del_mapa = {v["nombre"] for v in cargar_mapa_equipos().values()}
+    assert nombres_del_mapa
+    assert nombres_del_mapa <= del_sitio
