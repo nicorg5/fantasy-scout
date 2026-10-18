@@ -122,6 +122,7 @@ def _pagina_de_jugadores(request, plantilla_html: str, titulo: str, cargar, sesi
             "analitica_de": fecha_de_la_analitica(sesion),
             # Solo tiene sentido en la plantilla propia: el mercado no es "tu" equipo.
             "variacion": calcular_variacion(jugadores) if plantilla_html == "plantilla.html" else None,
+            "con_clausula": plantilla_html == "plantilla.html",
         },
     )
 
@@ -161,6 +162,8 @@ def _fragmento_tabla(request, titulo: str, cargar, con_variacion: bool = False, 
         context={
             "jugadores": jugadores,
             "variacion": calcular_variacion(jugadores) if con_variacion else None,
+            # Mismo criterio que la variacion: la columna de clausula es solo de /plantilla.
+            "con_clausula": con_variacion,
             "actualizado_ahora": en_vivo,
         },
     )

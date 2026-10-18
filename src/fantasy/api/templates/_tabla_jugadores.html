@@ -19,6 +19,8 @@
       <th scope="col">Tendencia de valor</th>
       <th scope="col">Media 7 días</th>
       <th scope="col">Probabilidad de jugar</th>
+      {# Solo en /plantilla: un jugador libre del mercado no tiene clausula. #}
+      {% if con_clausula %}<th scope="col">Cláusula</th>{% endif %}
     </tr>
   </thead>
   <tbody>
@@ -35,6 +37,9 @@
       <td data-etiqueta="Tendencia de valor">{{ ui.celda_tendencia(jugador.analitica) }}</td>
       <td data-etiqueta="Media 7 días">{{ ui.celda_media_semanal(jugador.analitica) }}</td>
       <td data-etiqueta="Probabilidad de jugar">{{ ui.celda_probabilidad(jugador.analitica) }}</td>
+      {% if con_clausula %}
+      <td data-etiqueta="Cláusula">{{ ui.celda_clausula(jugador.proteccion_clausula) }}</td>
+      {% endif %}
     </tr>
     {% endfor %}
   </tbody>

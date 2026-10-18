@@ -419,6 +419,23 @@ main h1 + p { color: var(--ll-texto-tenue); font-size: .95rem; }
 .jugadores tr.fichable { border-left: 3px solid var(--ll-sube); }
 .jugadores tr.bloqueada { opacity: .78; }
 
+/* Proteccion de clausula de los jugadores propios (specs/clausula-plantilla, D5).
+   Clausulable = cualquiera puede llevarselo ya: pildora roja. Menos de 24 h: aviso ambar.
+   El texto dice el estado; el color solo refuerza. */
+.clausula { color: var(--ll-texto-tenue); }
+.clausula--clausulable {
+  font-weight: 700;
+  font-size: .78rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--ll-baja);
+  background: rgba(255, 98, 89, .13);
+  border: 1px solid rgba(255, 98, 89, .35);
+  border-radius: 999px;
+  padding: .1rem .55rem;
+}
+.clausula--pronto { color: var(--ll-aviso); font-weight: 600; }
+
 /* --- Variacion total de la plantilla --- */
 .variacion-total {
   display: flex;

@@ -8,7 +8,7 @@ rutas* (códigos, avisos, degradación), no la integración con LaLiga, que ya c
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
@@ -354,3 +354,80 @@ def test_actualizar_datos_trae_el_rival_nuevo(cliente_autenticado, ruta, destino
     assert obtener.call_args.kwargs.get("en_vivo") is True
     assert "vs Levante" in _celda_rival(html, "Abel Bretones").get_text()
 
+
+# --- Protección de la cláusula (specs/clausula-plantilla, T4) ---
+
+CABECERA_CLAUSULA = '<th scope="col">Cláusula</th>'
+
+
+def _plantilla_con_protecciones() -> list[JugadorPresentado]:
+    ahora = datetime(2026, 10, 18, 12, 0, tzinfo=timezone.utc)
+
+    def con(nombre, horas, blindado=False):
+        hasta = None if horas is None else ahora + timedelta(hours=horas)
+        return _jugador(
+            nombre=nombre,
+            proteccion=ProteccionClausula.desde_bloqueo(hasta, blindado, ahora),
+        )
+
+    return [
+        con("Lejos", 25),
+        con("Pronto", 23),
+        con("Vencido", -1),
+        con("Blindado", 5, blindado=True),
+    ]
+
+
+def _fila(html: str, nombre: str) -> str:
+    """El <tr> del jugador, para no confundir lo de una fila con lo de otra."""
+    inicio = html.index(nombre)
+    return html[html.rindex("<tr", 0, inicio):html.index("</tr>", inicio)]
+
+
+@pytest.mark.parametrize("ruta", ["/plantilla", "/plantilla/tabla"])
+def test_plantilla_muestra_la_proteccion_de_cada_jugador(cliente_autenticado, ruta):
+    """C2, C4, C7, C8."""
+    with patch("fantasy.api.app.obtener_plantilla", return_value=_plantilla_con_protecciones()):
+        html = cliente_autenticado.get(ruta).text
+
+    assert CABECERA_CLAUSULA in html
+    assert html.count('data-etiqueta="Cláusula"') == 4
+
+    lejos = _fila(html, "Lejos")
+    assert "protegido · 1d 1h" in lejos
+    assert "clausula--" not in lejos
+
+    pronto = _fila(html, "Pronto")
+    assert "protegido · 23h 0m" in pronto
+    assert "menos de 24 h" in pronto
+    assert "clausula--pronto" in pronto
+
+    vencido = _fila(html, "Vencido")
+    assert "clausulable" in vencido
+    assert "clausula--clausulable" in vencido
+
+    blindado = _fila(html, "Blindado")
+    assert "blindado" in blindado
+    assert "clausula--" not in blindado
+
+
+@pytest.mark.parametrize("ruta", ["/mercado", "/mercado/tabla"])
+def test_el_mercado_no_tiene_columna_de_clausula(cliente_autenticado, ruta):
+    """C6."""
+    with patch("fantasy.api.app.obtener_mercado", return_value=[_jugador()]):
+        html = cliente_autenticado.get(ruta).text
+
+    assert "Abel Bretones" in html
+    assert CABECERA_CLAUSULA not in html
+    assert 'data-etiqueta="Cláusula"' not in html
+
+
+@pytest.mark.parametrize("ruta", ["/plantilla", "/plantilla/tabla"])
+def test_fecha_de_bloqueo_rota_avisa_y_no_revienta(cliente_autenticado, ruta):
+    """C9: misma salida que cualquier otro fallo de la API oficial."""
+    error = RespuestaInesperada("plantilla.players[0].buyoutClauseLockedEndTime", "fecha rota")
+    with patch("fantasy.api.app.obtener_plantilla", side_effect=error):
+        respuesta = cliente_autenticado.get(ruta)
+
+    assert respuesta.status_code == 200
+    assert "No se ha podido contactar con LaLiga Fantasy" in respuesta.text

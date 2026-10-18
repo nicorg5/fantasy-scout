@@ -95,3 +95,17 @@
     <span class="badge-no-disponible" title="{{ proximo_rival.motivo }}">sin dato</span>
   {% endif %}
 {%- endmacro %}
+
+{# Cuanto le queda a un jugador propio hasta poder ser clausulado (specs/clausula-plantilla,
+   D5). El estado siempre va escrito: el color de la pildora o del aviso solo refuerza. #}
+{% macro celda_clausula(proteccion) -%}
+  {% if proteccion.aviso == "clausulable" %}
+    <span class="clausula clausula--clausulable">{{ proteccion.legible }}</span>
+  {% else %}
+    <span class="clausula">{{ proteccion.legible }}</span>
+    {% if proteccion.aviso == "pronto" %}
+    <span class="meta clausula--pronto">menos de 24 h</span>
+    {% endif %}
+  {% endif %}
+  {{ etiqueta_origen("oficial") }}
+{%- endmacro %}
